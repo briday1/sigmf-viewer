@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import struct
-from base64 import b64decode
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +29,11 @@ from sigmf_viewer.sigmf import open_recording, read_window
 from sigmf_viewer.workspace import create_workspace
 
 
+def test_default_fft_size_is_256(tmp_path):
+    assert WaterfallSettings().fft_size == 256
+    assert SigMFWaterfallBatch(tmp_path).fft_size == 256
+
+
 def write_ci16(
     root: Path,
     stem: str,
@@ -38,6 +42,7 @@ def write_ci16(
     channels: int = 1,
     samples: int = 4096,
     description: str | None = None,
+    channel_names: tuple[str, ...] | None = None,
 ) -> tuple[Path, np.ndarray]:
     root.mkdir(parents=True, exist_ok=True)
     time = np.arange(samples) / sample_rate
@@ -62,6 +67,20 @@ def write_ci16(
                     "core:sample_rate": sample_rate,
                     "core:num_channels": channels,
                     "core:description": description or stem,
+                    **(
+                        {
+                            "core:extensions": [
+                                {
+                                    "name": "sigmf_viewer",
+                                    "version": "0.1.0",
+                                    "optional": True,
+                                }
+                            ],
+                            "sigmf_viewer:channel_names": list(channel_names),
+                        }
+                        if channel_names is not None
+                        else {}
+                    ),
                 },
                 "captures": [
                     {
@@ -84,11 +103,16 @@ def test_exact_multichannel_read_and_direct_pair_selection(tmp_path):
         tmp_path,
         "capture",
         channels=2,
+        channel_names=("Reference antenna", "Monitor antenna"),
     )
     recording = open_recording(metadata.with_suffix(".sigmf-data"))
     selected = recording.read(50, 100)
 
     assert recording.channel_count == 2
+    assert recording.channel_labels == (
+        "Reference antenna",
+        "Monitor antenna",
+    )
     assert selected.shape == (2, 100)
     assert np.allclose(selected, expected[:, 50:150], atol=2 / 32768)
 
@@ -265,6 +289,13 @@ def test_window_reader_analysis_and_plot_keep_absolute_axes(tmp_path):
     assert window.samples.shape == (1, 2000)
     assert products.waterfall_dbfs.shape[1] == 256
     assert np.allclose(products.time_edges_ms[[0, -1]], [10.0, 30.0])
+    assert np.allclose(
+        np.diff(products.time_edges_ms),
+        np.diff(products.time_edges_ms)[0],
+    )
+    frame_peaks = np.max(products.waterfall_dbfs, axis=1)
+    assert frame_peaks[0] > np.max(frame_peaks) - 6.0
+    assert frame_peaks[-1] > np.max(frame_peaks) - 6.0
     assert len(power_overview(recording, bins=20)) == 20
     overview_line, overview_heatmap = power_spectrum_overview(
         recording,
@@ -279,12 +310,15 @@ def test_window_reader_analysis_and_plot_keep_absolute_axes(tmp_path):
         overview_line,
         power_overview(recording, bins=20),
     )
-    assert np.allclose(figure.data[0].x, products.frequency_mhz)
-    assert np.allclose(figure.data[0].y, products.spectrum_dbfs)
+    assert np.allclose(figure.data[0].x, products.spectrum_dbfs)
+    assert np.allclose(figure.data[0].y, products.frequency_mhz)
+    assert figure.data[0].showlegend is False
     assert np.asarray(figure.data[1].z).shape == products.waterfall_dbfs.T.shape
-    assert figure.layout.yaxis.title.text == "Power (dBFS)"
+    assert figure.layout.xaxis.title.text == "Power (dBFS)"
+    assert figure.layout.yaxis.title.text == "RF frequency (MHz)"
     assert figure.layout.xaxis2.title.text == "Recording time (ms)"
-    assert figure.layout.yaxis2.title.text == "RF frequency (MHz)"
+    assert figure.layout.yaxis2.matches == "y"
+    assert figure.layout.yaxis2.showticklabels is False
     assert figure.layout.xaxis2.tickformat == ".2f"
     assert figure.layout.yaxis2.tickformat == ".2f"
     assert figure.layout.xaxis2.autorange is False
@@ -292,26 +326,15 @@ def test_window_reader_analysis_and_plot_keep_absolute_axes(tmp_path):
     assert "sigmf-viewer" in figure.layout.uirevision
 
 
-def test_progressive_raster_dimensions_and_switches_follow_rotated_axes(tmp_path):
+def test_progressive_raster_dimensions_and_switches_follow_time_frequency_axes(
+    tmp_path,
+):
     metadata, _ = write_ci16(tmp_path, "raster", samples=8192)
     recording = open_recording(metadata)
     products = analyze(
         read_window(recording, 1000, 3000),
         WaterfallSettings(fft_size=256, overlap_percent=50, channel=0),
     )
-
-    rastered = waterfall_figure(
-        products,
-        render_width=5,
-        render_height=7,
-    )
-    assert len(rastered.layout.images) == 1
-    encoded = str(rastered.layout.images[0].source).split(",", 1)[1]
-    raster = b64decode(encoded)
-    assert raster[:8] == b"\x89PNG\r\n\x1a\n"
-    assert struct.unpack(">II", raster[16:24]) == (5, 7)
-    assert rastered.layout.images[0].xref == "x2"
-    assert rastered.layout.images[0].yref == "y2"
 
     time_base = [
         float(products.time_edges_ms[0]),
@@ -322,6 +345,34 @@ def test_progressive_raster_dimensions_and_switches_follow_rotated_axes(tmp_path
         float(products.frequency_mhz[0] - frequency_step / 2),
         float(products.frequency_mhz[-1] + frequency_step / 2),
     ]
+    rastered = waterfall_figure(
+        products,
+        render_width=5,
+        render_height=7,
+    )
+    assert not rastered.layout.images
+    assert np.asarray(rastered.data[1].z).shape == (7, 5)
+    assert rastered.data[1].xaxis == "x2"
+    assert rastered.data[1].yaxis == "y2"
+    assert np.allclose(
+        [rastered.data[1].x[0], rastered.data[1].x[-1]],
+        time_base,
+    )
+    assert np.allclose(
+        [rastered.data[1].y[0], rastered.data[1].y[-1]],
+        frequency_base,
+    )
+
+    def displayed_extent(figure):
+        if figure.layout.images:
+            image = figure.layout.images[0]
+            return float(image.sizex), float(image.sizey)
+        heatmap = figure.data[1]
+        return (
+            abs(float(heatmap.x[-1]) - float(heatmap.x[0])),
+            abs(float(heatmap.y[-1]) - float(heatmap.y[0])),
+        )
+
     first_zoom = waterfall_figure(
         products,
         viewport={
@@ -349,8 +400,10 @@ def test_progressive_raster_dimensions_and_switches_follow_rotated_axes(tmp_path
         render_width=2,
         render_height=2,
     )
-    assert first_zoom.layout.images[0].sizex > second_zoom.layout.images[0].sizex
-    assert first_zoom.layout.images[0].sizey > second_zoom.layout.images[0].sizey
+    first_width, first_height = displayed_extent(first_zoom)
+    second_width, second_height = displayed_extent(second_zoom)
+    assert first_width > second_width
+    assert first_height > second_height
 
     direct = waterfall_figure(
         products,
@@ -374,6 +427,12 @@ def test_annotations_are_persisted_and_rendered_as_vector_traces(tmp_path):
     recording = open_recording(metadata)
     window = read_window(recording, 0, 2048)
     annotator = WaterfallAnnotator()
+    assert [field.plot_binding.axis for field in annotator.fields[:4]] == [
+        "xaxis2",
+        "xaxis2",
+        "yaxis2",
+        "yaxis2",
+    ]
     created = annotator.annotate(
         recording,
         window,
@@ -414,6 +473,7 @@ def test_batch_png_is_exact_size_and_has_durable_contract(tmp_path):
         "multi",
         channels=2,
         samples=4096,
+        channel_names=("Primary antenna", "Reference antenna"),
     )
     recording = open_recording(metadata)
     output = tmp_path / "rendered.png"
@@ -450,10 +510,17 @@ def test_batch_png_is_exact_size_and_has_durable_contract(tmp_path):
     assert destination.directory == (tmp_path / "outputs").resolve()
     assert len(destination.files) == 2
     assert all(name.endswith(".png") for name in destination.files)
+    assert any("primary-antenna" in name for name in destination.files)
+    assert any("reference-antenna" in name for name in destination.files)
 
 
 def test_workspace_is_one_lazy_windowed_pipeline(tmp_path):
-    write_ci16(tmp_path / "data", "capture")
+    write_ci16(
+        tmp_path / "data",
+        "capture",
+        channels=2,
+        channel_names=("Reference antenna", "Monitor antenna"),
+    )
     workspace = create_workspace(
         {
             "data_root": tmp_path / "data",
@@ -482,3 +549,36 @@ def test_workspace_is_one_lazy_windowed_pipeline(tmp_path):
     assert opened.page.playback.overview_values == ()
     assert len(opened.page.playback.overview_heatmap) == 48
     assert all(len(row) == 12 for row in opened.page.playback.overview_heatmap)
+    assert opened.page.playback.overview_colormap_control == "colormap"
+    assert opened.page.playback.overview_limits_control == "dbfs_limits"
+    assert all(control.name != "channel" for control in opened.page.controls)
+    stack = [opened.page.layout]
+    switchers = []
+    while stack:
+        node = stack.pop()
+        if node.kind == "view_switcher":
+            switchers.append(node)
+        stack.extend(node.children)
+    assert len(switchers) == 1
+    assert switchers[0].props["label"] == "Channel"
+    assert switchers[0].props["selector"] == "dropdown"
+    assert switchers[0].props["options"] == (("Reference antenna", "Monitor antenna"),)
+
+
+def test_single_channel_workspace_has_no_channel_ui(tmp_path):
+    write_ci16(tmp_path / "data", "single")
+    workspace = create_workspace(
+        {
+            "data_root": tmp_path / "data",
+            "output_root": tmp_path / "outputs",
+        }
+    )
+
+    opened = workspace.open_item(workspace.discover_items()[0].identifier)
+    assert all(control.name != "channel" for control in opened.page.controls)
+    stack = [opened.page.layout]
+    while stack:
+        node = stack.pop()
+        assert node.kind != "view_switcher"
+        stack.extend(node.children)
+    assert [view.name for view in opened.page.views] == ["sigmf-viewer"]

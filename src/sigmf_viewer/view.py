@@ -28,18 +28,7 @@ COLORMAPS = (
 def view(data: SigMFWindow, ui: UI) -> None:
     """Configure, process, and present one exact selected sample window."""
     defaults = WaterfallSettings()
-    channel_options = {
-        index: f"Channel {index + 1}" for index in range(data.recording.channel_count)
-    }
     with ui.details_group("Spectrogram processing"):
-        channel = int(
-            ui.select(
-                "channel",
-                label="Input channel",
-                default=defaults.channel,
-                options=channel_options,
-            )
-        )
         fft_size = int(
             ui.select(
                 "fft_size",
@@ -56,17 +45,21 @@ def view(data: SigMFWindow, ui: UI) -> None:
                 options=(0, 25, 50, 75),
             )
         )
-    products = ui.compute(
-        "sigmf-viewer-analysis",
-        lambda: analyze(
-            data,
-            WaterfallSettings(
-                fft_size=fft_size,
-                overlap_percent=overlap_percent,
-                channel=channel,
+
+    def products_for(channel: int):
+        return ui.compute(
+            f"sigmf-viewer-analysis:{channel}",
+            lambda: analyze(
+                data,
+                WaterfallSettings(
+                    fft_size=fft_size,
+                    overlap_percent=overlap_percent,
+                    channel=channel,
+                ),
             ),
-        ),
-    )
+        )
+
+    automatic_products = products_for(0)
 
     colormap = ui.colormap(
         "colormap",
@@ -75,7 +68,7 @@ def view(data: SigMFWindow, ui: UI) -> None:
         options=COLORMAPS,
         group="Display",
     )
-    automatic_waterfall, automatic_spectrum = automatic_dbfs_ranges(products)
+    automatic_waterfall, automatic_spectrum = automatic_dbfs_ranges(automatic_products)
     zmin, zmax = ui.limits(
         "dbfs_limits",
         label="Waterfall dBFS limits",
@@ -179,17 +172,20 @@ def view(data: SigMFWindow, ui: UI) -> None:
         )
 
     global_metadata = data.recording.metadata["global"]
-    title = str(
+    recording_title = str(
         global_metadata.get("core:description")
         or data.recording.metadata_path.name.removesuffix(".sigmf-meta")
     )
-    if data.recording.channel_count > 1:
-        title = f"{title} · Channel {channel + 1}"
+    channel_labels = data.recording.channel_labels
 
-    def figure():
+    def figure(channel: int, plot_key: str):
+        products = products_for(channel)
+        title = recording_title
+        if data.recording.channel_count > 1:
+            title = f"{title} · {channel_labels[channel]}"
         rendered = waterfall_figure(
             products,
-            viewport=ui.plot_viewport("sigmf-viewer"),
+            viewport=ui.plot_viewport(plot_key),
             colormap=colormap,
             zmin=zmin,
             zmax=zmax,
@@ -213,28 +209,46 @@ def view(data: SigMFWindow, ui: UI) -> None:
         styled.update_xaxes(
             gridcolor=heatmap_grid_color(ui.theme),
             gridwidth=0.35,
-            row=2,
-            col=1,
+            row=1,
+            col=2,
         )
         styled.update_yaxes(
             gridcolor=heatmap_grid_color(ui.theme),
             gridwidth=0.35,
-            row=2,
-            col=1,
+            row=1,
+            col=2,
         )
         return styled
 
     center_frequency = data.recording.center_frequency_at(data.start_sample)
     ui.stat("Sampling rate", f"{data.recording.sample_rate / 1e6:g} MS/s")
     ui.stat("Center frequency", f"{center_frequency / 1e6:g} MHz")
-    ui.stat("Displayed channel", f"{channel + 1}/{data.recording.channel_count}")
-    ui.stat("Buffer memory", format_bytes(products.buffer_nbytes))
+    if data.recording.channel_count > 1:
+        ui.stat("Available channels", " · ".join(channel_labels))
+    ui.stat("Buffer memory", format_bytes(data.buffer_nbytes))
     with ui.tab("Spectrum + waterfall"):
-        ui.plot(
-            figure,
-            key="sigmf-viewer",
-            axis_navigation="bounded",
-        )
+        if data.recording.channel_count == 1:
+            ui.plot(
+                lambda: figure(0, "sigmf-viewer"),
+                key="sigmf-viewer",
+                axis_navigation="bounded",
+            )
+        else:
+            ui.view_switcher(
+                "Channel",
+                {
+                    label: (
+                        lambda selected=index: figure(
+                            selected,
+                            f"sigmf-viewer-{selected}",
+                        )
+                    )
+                    for index, label in enumerate(channel_labels)
+                },
+                key="sigmf-viewer",
+                selector="dropdown",
+                axis_navigation="bounded",
+            )
 
 
 __all__ = ["COLORMAPS", "view"]

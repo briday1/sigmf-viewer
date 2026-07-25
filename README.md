@@ -104,11 +104,15 @@ Opening an item provides:
 - a collection recording dropdown when applicable;
 - a low-resolution full-recording spectrum, plus a draggable exact sample
   window and full-extent icon;
-- channel selection for interleaved multi-channel recordings;
-- explicit fast-time FFT size and slow-time overlap controls;
+- a metadata-labeled channel view switcher for multi-channel recordings, with
+  honest zero-based “unlabeled” fallbacks and no redundant channel UI for
+  single-channel data;
+- explicit fast-time FFT size (256 samples by default) and slow-time overlap
+  controls;
 - a visual picker with ten colormaps;
 - fixed user-controlled waterfall and average-PSD dBFS ranges;
-- a compact average PSD occupying 10% of the plot height above the waterfall;
+- a compact average PSD occupying the left 10% of the plot width and sharing
+  the waterfall's vertical frequency axis;
 - independent switches for the average PSD and progressive raster rendering;
 - viewport-aware heatmap rendering for the currently visible time/frequency
   bounds after every zoom;
@@ -120,6 +124,10 @@ Opening an item provides:
 Viewport rasterization changes display cells only. It does not alter samples,
 STFT values, annotation coordinates, or the headless pipeline. Plotly Home
 and double-click reset always restore the complete current buffer.
+Slow-time cells have equal width over the exact selected buffer. Boundary FFTs
+are centered, padded only outside the buffer, and normalized by the taper
+support that contains real samples, so the first and last heatmap cells are
+neither stretched nor artificially attenuated.
 
 Both the main waterfall and its compact timeline spectrum place recording
 time left-to-right and frequency bottom-to-top. The timeline covers the
@@ -137,7 +145,7 @@ renders every member and every channel. The workspace action renders all
 catalog items. Deterministic results live under `outputs/`, so completed
 outputs are recognized after restart.
 
-The default image is 2400×1600 with the same top 10% average-PSD strip.
+The default image is 2400×1600 with the same left-side 10% average-PSD strip.
 Rendering walks every STFT frame across the complete recording in
 bounded-memory chunks. If there are more slow-time frames than output
 columns, linear power is averaged only among frames assigned to the same
@@ -173,7 +181,7 @@ recording = open_recording("capture.sigmf-meta")
 window = read_window(recording, start_sample=0, sample_count=262_144)
 products = analyze(
     window,
-    WaterfallSettings(fft_size=2048, overlap_percent=50, channel=0),
+    WaterfallSettings(fft_size=256, overlap_percent=50, channel=0),
 )
 plot_waterfall(products).show()
 ```

@@ -134,7 +134,7 @@ def _fields() -> tuple[AnnotationField, ...]:
             required=True,
             plot_binding=AnnotationPlotBinding(
                 view,
-                "yaxis2",
+                "xaxis2",
                 "lower",
                 scale=1e-3,
                 selection_policy="box_preferred",
@@ -147,7 +147,7 @@ def _fields() -> tuple[AnnotationField, ...]:
             required=True,
             plot_binding=AnnotationPlotBinding(
                 view,
-                "yaxis2",
+                "xaxis2",
                 "upper",
                 scale=1e-3,
                 selection_policy="box_preferred",
@@ -160,7 +160,7 @@ def _fields() -> tuple[AnnotationField, ...]:
             required=True,
             plot_binding=AnnotationPlotBinding(
                 view,
-                "xaxis2",
+                "yaxis2",
                 "lower",
                 scale=1e6,
                 selection_policy="box_preferred",
@@ -173,7 +173,7 @@ def _fields() -> tuple[AnnotationField, ...]:
             required=True,
             plot_binding=AnnotationPlotBinding(
                 view,
-                "xaxis2",
+                "yaxis2",
                 "upper",
                 scale=1e6,
                 selection_policy="box_preferred",

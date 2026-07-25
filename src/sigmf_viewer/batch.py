@@ -162,7 +162,7 @@ def render_recording_png(
     target: str | Path,
     *,
     channel: int = 0,
-    fft_size: int = 2048,
+    fft_size: int = 256,
     overlap_percent: int = 50,
     time_bins: int = 1200,
     width_pixels: int = 2400,
@@ -211,29 +211,24 @@ def render_recording_png(
         layout="constrained",
     )
     grid = figure.add_gridspec(
-        2,
-        2,
-        width_ratios=(1.0, 0.025),
-        height_ratios=(0.10, 0.90),
-        hspace=0.04,
-        wspace=0.02,
+        1,
+        3,
+        width_ratios=(0.10, 0.875, 0.025),
+        wspace=0.03,
     )
     spectrum_axes = figure.add_subplot(grid[0, 0])
-    waterfall_axes = figure.add_subplot(
-        grid[1, 0],
-    )
-    colorbar_axes = figure.add_subplot(grid[1, 1])
+    waterfall_axes = figure.add_subplot(grid[0, 1], sharey=spectrum_axes)
+    colorbar_axes = figure.add_subplot(grid[0, 2])
     frequency_centers = (frequency_edges[:-1] + frequency_edges[1:]) / 2.0
     spectrum_axes.plot(
-        frequency_centers,
         spectrum_dbfs,
+        frequency_centers,
         color="#087e8b",
         linewidth=0.9,
     )
-    spectrum_axes.set_ylabel("dBFS")
-    spectrum_axes.set_ylim(spectrum_min, spectrum_max)
+    spectrum_axes.set_xlabel("dBFS")
+    spectrum_axes.set_xlim(spectrum_min, spectrum_max)
     spectrum_axes.grid(alpha=0.18, linewidth=0.5)
-    spectrum_axes.tick_params(labelbottom=False)
     image = waterfall_axes.pcolormesh(
         time_edges,
         frequency_edges,
@@ -245,7 +240,8 @@ def render_recording_png(
         rasterized=True,
     )
     waterfall_axes.set_xlabel("Recording time (s)")
-    waterfall_axes.set_ylabel("RF frequency (MHz)")
+    spectrum_axes.set_ylabel("RF frequency (MHz)")
+    waterfall_axes.tick_params(labelleft=False)
     waterfall_axes.grid(
         color="white",
         alpha=0.10,
@@ -261,7 +257,7 @@ def render_recording_png(
         or recording.metadata_path.name.removesuffix(".sigmf-meta")
     )
     if recording.channel_count > 1:
-        title = f"{title} · Channel {channel + 1}"
+        title = f"{title} · {recording.channel_labels[channel]}"
     figure.suptitle(
         (
             f"{title}\n"
@@ -322,7 +318,7 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
         self,
         output_root: str | Path,
         *,
-        fft_size: int = 2048,
+        fft_size: int = 256,
         overlap_percent: int = 50,
         time_bins: int = 1200,
         width_pixels: int = 2400,
@@ -364,8 +360,9 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
                 collection.collection_path.parent
             ).as_posix()
             slug = f"{slug}-{self._slug(member.removesuffix('.sigmf-meta'))}"
+        channel_slug = self._slug(recording.channel_labels[channel])
         return (
-            f"{slug}-ch{channel + 1}-waterfall-"
+            f"{slug}-{channel_slug}-waterfall-"
             f"fft{self.fft_size}-{self.overlap_percent}pct-"
             f"{self.width_pixels}x{self.height_pixels}.png"
         )

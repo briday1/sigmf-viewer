@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from math import ceil
+
 import numpy as np
 
 from .models import SigMFWindow, WaterfallProducts, WaterfallSettings
@@ -42,36 +44,34 @@ def analyze(
         1,
         round(fft_size * (1.0 - settings.overlap_percent / 100.0)),
     )
-    starts = np.arange(
-        0,
-        max(1, samples.size - fft_size + 1),
-        hop,
-        dtype=np.int64,
-    )
-    blocks = np.asarray([samples[start : start + fft_size] for start in starts])
-    if blocks.shape[1] < fft_size:
-        blocks = np.pad(
-            blocks,
-            ((0, 0), (0, fft_size - blocks.shape[1])),
+    frame_count = max(1, ceil(samples.size / hop))
+    time_edges = np.linspace(0.0, float(samples.size), frame_count + 1)
+    centers = (time_edges[:-1] + time_edges[1:]) / 2.0
+    taper = np.hanning(fft_size) if fft_size > 2 else np.ones(fft_size)
+    blocks = np.zeros((frame_count, fft_size), dtype=samples.dtype)
+    normalizers = np.empty(frame_count, dtype=np.float64)
+    for index, center in enumerate(centers):
+        start = int(np.rint(center - fft_size / 2.0))
+        source_start = max(0, start)
+        source_stop = min(samples.size, start + fft_size)
+        target_start = source_start - start
+        target_stop = target_start + source_stop - source_start
+        blocks[index, target_start:target_stop] = samples[source_start:source_stop]
+        normalizers[index] = max(
+            float(np.sum(taper[target_start:target_stop])),
+            1.0,
         )
-    taper = np.hanning(fft_size)
     spectra = np.fft.fftshift(
         np.fft.fft(blocks * taper, axis=1),
         axes=1,
     )
-    power = (np.abs(spectra) / max(float(np.sum(taper)), 1.0)) ** 2
+    power = (np.abs(spectra) / normalizers[:, None]) ** 2
     waterfall = 10.0 * np.log10(np.maximum(power, 1e-20))
     average = 10.0 * np.log10(np.maximum(np.mean(power, axis=0), 1e-20))
     frequency = (
         data.recording.center_frequency_at(data.start_sample)
         + np.fft.fftshift(np.fft.fftfreq(fft_size, 1.0 / data.recording.sample_rate))
     ) / 1e6
-    centers = starts + fft_size / 2.0
-    time_edges = cell_edges(
-        centers,
-        0.0,
-        float(data.sample_count),
-    )
     return WaterfallProducts(
         recording=data.recording,
         start_sample=data.start_sample,

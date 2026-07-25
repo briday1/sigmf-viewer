@@ -72,6 +72,7 @@ def test_runtime_profile_uses_explicit_paths_and_flat_discovery():
         assert Path(workspace.configuration["data_root"]) == data.resolve()
         assert Path(workspace.configuration["output_root"]) == output.resolve()
         assert payload["workspaces"][0]["id"] == "sigmf-viewer"
+        assert payload["workspaces"][0]["config"]["batch_fft_size"] == 256
         assert output.is_dir()
         assert not profile_path.exists()
 

@@ -266,7 +266,7 @@ def power_spectrum_overview(
 
     The returned heatmap is frequency-by-time: columns place recording time
     left-to-right in the window bar and rows place frequency bottom-to-top.
-    This deliberately rotates the main waterfall's frequency-x/time-y layout.
+    This is the same time-x/frequency-y orientation as the main waterfall.
     Source intervals are complete and non-overlapping; any partial FFT block
     is zero padded, then weighted by its actual sample count through
     Parseval-consistent linear-power sums.
@@ -474,6 +474,8 @@ def create_reader(config):
             duration=recording.duration_seconds,
             default_window=min(default_window, recording.duration_seconds),
             overview_heatmap=overview_heatmap,
+            overview_colormap_control="colormap",
+            overview_limits_control="dbfs_limits",
             overview_label="Full-recording spectrum",
             minimum_window=min(minimum_window, recording.duration_seconds),
             step=min(window_step, recording.duration_seconds),

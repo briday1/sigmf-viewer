@@ -25,7 +25,7 @@ def create_workspace(config) -> Workspace:
         annotator=WaterfallAnnotator(),
         batch=SigMFWaterfallBatch(
             values.path("output_root"),
-            fft_size=values.integer("batch_fft_size", 2048),
+            fft_size=values.integer("batch_fft_size", 256),
             overlap_percent=values.integer(
                 "batch_overlap_percent",
                 50,

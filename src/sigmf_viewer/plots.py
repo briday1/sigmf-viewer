@@ -72,7 +72,7 @@ def waterfall_figure(
     annotation_width: float = 1.5,
     annotation_opacity: float = 0.8,
 ) -> go.Figure:
-    """Build the average-PSD strip above a time-x/frequency-y waterfall."""
+    """Build a left average-PSD strip sharing the waterfall frequency axis."""
     automatic_waterfall, automatic_spectrum = automatic_dbfs_ranges(products)
     zmin, zmax = automatic_waterfall if zmin is None or zmax is None else (zmin, zmax)
     spectrum_min, spectrum_max = (
@@ -88,20 +88,22 @@ def waterfall_figure(
     )
     spectrum_marker = getattr(spectrum_style, "plotly_marker", None)
     figure = make_subplots(
-        rows=2,
-        cols=1,
-        row_heights=(0.10, 0.90) if show_spectrum else (1e-6, 1.0),
-        vertical_spacing=0.025 if show_spectrum else 0.0,
+        rows=1,
+        cols=2,
+        shared_yaxes=True,
+        column_widths=(0.10, 0.90) if show_spectrum else (1e-6, 1.0),
+        horizontal_spacing=0.025 if show_spectrum else 0.0,
     )
     if show_spectrum:
         figure.add_trace(
             go.Scatter(
-                x=products.frequency_mhz,
-                y=products.spectrum_dbfs,
+                x=products.spectrum_dbfs,
+                y=products.frequency_mhz,
                 mode=spectrum_mode,
                 line=spectrum_line,
                 marker=spectrum_marker,
                 name="Average spectrum",
+                showlegend=False,
             ),
             row=1,
             col=1,
@@ -123,12 +125,12 @@ def waterfall_figure(
             render_width=render_width,
             render_height=render_height,
             aggregation=aggregation,
-            row=2,
-            col=1,
+            row=1,
+            col=2,
             **heatmap,
         )
     else:
-        figure.add_trace(go.Heatmap(**heatmap), row=2, col=1)
+        figure.add_trace(go.Heatmap(**heatmap), row=1, col=2)
     frequency_step = (
         float(abs(products.frequency_mhz[1] - products.frequency_mhz[0]))
         if products.frequency_mhz.size > 1
@@ -151,14 +153,15 @@ def waterfall_figure(
         opacity=annotation_opacity,
     )
     if show_spectrum:
-        figure.update_yaxes(
+        figure.update_xaxes(
             title_text="Power (dBFS)",
             range=[spectrum_min, spectrum_max],
             autorange=False,
             row=1,
             col=1,
         )
-        figure.update_xaxes(
+        figure.update_yaxes(
+            title_text="RF frequency (MHz)",
             range=frequency_range,
             autorange=False,
             tickformat=".2f",
@@ -173,19 +176,21 @@ def waterfall_figure(
         ],
         autorange=False,
         tickformat=".2f",
-        row=2,
-        col=1,
+        row=1,
+        col=2,
     )
     figure.update_yaxes(
-        title_text="RF frequency (MHz)",
+        title_text=None if show_spectrum else "RF frequency (MHz)",
         range=frequency_range,
         autorange=False,
         tickformat=".2f",
-        row=2,
-        col=1,
+        showticklabels=not show_spectrum,
+        row=1,
+        col=2,
     )
     figure.update_layout(
-        uirevision=(f"sigmf-viewer:{products.recording.metadata_path}")
+        uirevision=(f"sigmf-viewer:{products.recording.metadata_path}"),
+        showlegend=False,
     )
     return figure
 
@@ -263,8 +268,8 @@ def _add_annotation_regions(
             showlegend=False,
             hoverinfo="skip",
         ),
-        row=2,
-        col=1,
+        row=1,
+        col=2,
     )
     figure.add_trace(
         go.Scatter(
@@ -282,8 +287,8 @@ def _add_annotation_regions(
             name="Annotation details",
             showlegend=False,
         ),
-        row=2,
-        col=1,
+        row=1,
+        col=2,
     )
 
 
