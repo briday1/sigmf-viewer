@@ -117,6 +117,12 @@ def waterfall_figure(
         "colorscale": colormap,
         "showscale": show_colorbar,
         "colorbar": {"title": "dBFS"},
+        "hovertemplate": (
+            "Recording time: %{x:.2f} ms"
+            "<br>RF frequency: %{y:.6f} MHz"
+            "<br>dBFS: %{z:.2f}"
+            "<extra></extra>"
+        ),
     }
     if progressive_render:
         add_viewport_heatmap(

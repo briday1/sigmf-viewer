@@ -314,6 +314,12 @@ def test_window_reader_analysis_and_plot_keep_absolute_axes(tmp_path):
     assert np.allclose(figure.data[0].y, products.frequency_mhz)
     assert figure.data[0].showlegend is False
     assert np.asarray(figure.data[1].z).shape == products.waterfall_dbfs.T.shape
+    assert figure.data[1].hovertemplate == (
+        "Recording time: %{x:.2f} ms"
+        "<br>RF frequency: %{y:.6f} MHz"
+        "<br>dBFS: %{z:.2f}"
+        "<extra></extra>"
+    )
     assert figure.layout.xaxis.title.text == "Power (dBFS)"
     assert figure.layout.yaxis.title.text == "RF frequency (MHz)"
     assert figure.layout.xaxis2.title.text == "Recording time (ms)"
@@ -352,6 +358,9 @@ def test_progressive_raster_dimensions_and_switches_follow_time_frequency_axes(
     )
     assert not rastered.layout.images
     assert np.asarray(rastered.data[1].z).shape == (7, 5)
+    assert "Recording time" in rastered.data[1].hovertemplate
+    assert "RF frequency" in rastered.data[1].hovertemplate
+    assert "dBFS" in rastered.data[1].hovertemplate
     assert rastered.data[1].xaxis == "x2"
     assert rastered.data[1].yaxis == "y2"
     assert np.allclose(
