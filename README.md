@@ -1,8 +1,8 @@
 # SigMF Viewer
 
-A focused local browser for SigMF recordings, built as one Sigvue
-`Workspace`. The application opens directly onto a flat recording catalog and
-supports:
+A focused local browser for SigMF recordings, built as one
+[Sigvue](https://github.com/briday1/sigvue) `Workspace`. The application opens
+directly onto a flat recording catalog and supports:
 
 - any directory containing `.sigmf-meta`/`.sigmf-data` pairs;
 - one pair selected by either its metadata or data path;
