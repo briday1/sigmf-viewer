@@ -1,0 +1,29 @@
+[browser]
+title = "SigMF Waterfall Viewer"
+subtitle = "Windowed spectrum analysis for individual recordings and collections"
+
+[[workspaces]]
+use = "sigmf-waterfall-viewer"
+path = "."
+id = "sigmf-waterfall"
+name = "SigMF Waterfall"
+description = "Browse SigMF recordings and inspect exact ranged sample windows."
+category = "spectrum monitoring"
+tags = ["SigMF", "windowed", "waterfall", "spectrum", "real data"]
+flatten_discovery = true
+
+[workspaces.config]
+data_root = "./data"
+output_root = "./outputs"
+filename = "*.sigmf-meta"
+default_window_seconds = 0.012
+minimum_window_seconds = 0.004
+window_step_seconds = 0.002
+overview_bins = 300
+overview_frequency_bins = 48
+overview_fft_size = 256
+batch_fft_size = 2048
+batch_overlap_percent = 50
+batch_time_bins = 1200
+batch_width_pixels = 2400
+batch_height_pixels = 1600
