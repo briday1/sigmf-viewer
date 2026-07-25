@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-APPLICATION_NAME = "SigMF Waterfall Viewer"
+APPLICATION_NAME = "SigMF Viewer"
 
 
 def application_data_root() -> Path:
@@ -30,7 +30,7 @@ def application_data_root() -> Path:
             Path.home() / ".local" / "share",
         )
     )
-    return base / "sigmf-waterfall-viewer"
+    return base / "sigmf-viewer"
 
 
 def _source_checkout_root() -> Path | None:
@@ -47,7 +47,7 @@ def _bundled_data_root() -> Path | None:
 
 
 def default_data_root(*, desktop: bool = False) -> Path:
-    configured = os.environ.get("SIGMF_WATERFALL_VIEWER_DATA_ROOT")
+    configured = os.environ.get("SIGMF_VIEWER_DATA_ROOT")
     if configured:
         return Path(configured).expanduser().resolve()
     bundled = _bundled_data_root()
@@ -63,7 +63,7 @@ def default_data_root(*, desktop: bool = False) -> Path:
 
 
 def default_output_root(*, desktop: bool = False) -> Path:
-    configured = os.environ.get("SIGMF_WATERFALL_VIEWER_OUTPUT_ROOT")
+    configured = os.environ.get("SIGMF_VIEWER_OUTPUT_ROOT")
     if configured:
         return Path(configured).expanduser().resolve()
     if desktop or getattr(sys, "frozen", False):
@@ -77,13 +77,13 @@ def default_output_root(*, desktop: bool = False) -> Path:
 def profile_text(data_root: Path, output_root: Path) -> str:
     """Build the focused one-workspace profile with absolute paths."""
     return f"""[browser]
-title = "SigMF Waterfall Viewer"
+title = "SigMF Viewer"
 subtitle = "Windowed spectrum analysis for recordings and collections"
 
 [[workspaces]]
-use = "sigmf_waterfall_viewer.workspace:create_workspace"
-id = "sigmf-waterfall"
-name = "SigMF Waterfall"
+use = "sigmf_viewer.workspace:create_workspace"
+id = "sigmf-viewer"
+name = "SigMF Viewer"
 description = "Browse SigMF pairs and collections as windowed waterfalls."
 category = "spectrum monitoring"
 tags = ["SigMF", "windowed", "waterfall", "spectrum"]
@@ -125,7 +125,7 @@ def runtime_profile(
         else Path(output_root).expanduser().resolve()
     )
     resolved_output.mkdir(parents=True, exist_ok=True)
-    with TemporaryDirectory(prefix="sigmf-waterfall-viewer-") as directory:
+    with TemporaryDirectory(prefix="sigmf-viewer-") as directory:
         profile = Path(directory) / "browser.toml"
         profile.write_text(
             profile_text(resolved_data, resolved_output),

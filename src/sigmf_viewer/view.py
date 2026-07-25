@@ -57,7 +57,7 @@ def view(data: SigMFWindow, ui: UI) -> None:
             )
         )
     products = ui.compute(
-        "sigmf-waterfall-analysis",
+        "sigmf-viewer-analysis",
         lambda: analyze(
             data,
             WaterfallSettings(
@@ -85,7 +85,7 @@ def view(data: SigMFWindow, ui: UI) -> None:
         step=1.0,
         group="Display",
     )
-    spectrum_ymin, spectrum_ymax = ui.limits(
+    spectrum_min, spectrum_max = ui.limits(
         "spectrum_dbfs_limits",
         label="Average PSD limits (dBFS)",
         default=automatic_spectrum,
@@ -99,6 +99,12 @@ def view(data: SigMFWindow, ui: UI) -> None:
         label="Average PSD",
         color=TEAL,
         width=1.4,
+        group="Display",
+    )
+    show_spectrum = ui.toggle(
+        "show_spectrum",
+        label="Show average spectrum",
+        default=True,
         group="Display",
     )
     show_colorbar = ui.toggle(
@@ -142,10 +148,15 @@ def view(data: SigMFWindow, ui: UI) -> None:
         )
     )
     with ui.details_group("Raster rendering"):
+        progressive_render = ui.toggle(
+            "progressive_render",
+            label="Progressive raster rendering",
+            default=True,
+        )
         render_width = int(
             ui.select(
                 "render_width",
-                label="Heatmap render width",
+                label="Time-axis raster width",
                 default=1024,
                 options=(256, 512, 1024, 2048),
             )
@@ -153,7 +164,7 @@ def view(data: SigMFWindow, ui: UI) -> None:
         render_height = int(
             ui.select(
                 "render_height",
-                label="Heatmap render height",
+                label="Frequency-axis raster height",
                 default=512,
                 options=(128, 256, 512, 1024),
             )
@@ -178,14 +189,16 @@ def view(data: SigMFWindow, ui: UI) -> None:
     def figure():
         rendered = waterfall_figure(
             products,
-            viewport=ui.plot_viewport("sigmf-waterfall"),
+            viewport=ui.plot_viewport("sigmf-viewer"),
             colormap=colormap,
             zmin=zmin,
             zmax=zmax,
-            spectrum_ymin=spectrum_ymin,
-            spectrum_ymax=spectrum_ymax,
+            spectrum_min=spectrum_min,
+            spectrum_max=spectrum_max,
             spectrum_style=spectrum_style,
+            show_spectrum=show_spectrum,
             show_colorbar=show_colorbar,
+            progressive_render=progressive_render,
             render_width=render_width,
             render_height=render_height,
             aggregation=aggregation,
@@ -219,7 +232,7 @@ def view(data: SigMFWindow, ui: UI) -> None:
     with ui.tab("Spectrum + waterfall"):
         ui.plot(
             figure,
-            key="sigmf-waterfall",
+            key="sigmf-viewer",
             axis_navigation="bounded",
         )
 

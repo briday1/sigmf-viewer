@@ -1,4 +1,4 @@
-"""Build the SigMF Waterfall Viewer desktop artifact with PyInstaller."""
+"""Build the SigMF Viewer desktop artifact with PyInstaller."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description=("Build the native SigMF Waterfall Viewer desktop application"),
+        description=("Build the native SigMF Viewer desktop application"),
     )
     parser.add_argument(
         "--data-root",
@@ -30,22 +30,19 @@ def main() -> None:
         from PyInstaller.__main__ import run
     except ImportError as exc:  # pragma: no cover
         raise SystemExit(
-            "Install desktop support first: "
-            'pip install "sigmf-waterfall-viewer[desktop]"'
+            'Install desktop support first: pip install "sigmf-viewer[desktop]"'
         ) from exc
 
     if args.data_root is not None:
         root = args.data_root.expanduser().resolve()
         if not root.is_dir():
             parser.error(f"data directory does not exist: {root}")
-        os.environ["SIGMF_WATERFALL_VIEWER_BUNDLE_DATA"] = "1"
-        os.environ["SIGMF_WATERFALL_VIEWER_DATA_ROOT"] = str(root)
+        os.environ["SIGMF_VIEWER_BUNDLE_DATA"] = "1"
+        os.environ["SIGMF_VIEWER_DATA_ROOT"] = str(root)
     elif args.without_data:
-        os.environ["SIGMF_WATERFALL_VIEWER_BUNDLE_DATA"] = "0"
+        os.environ["SIGMF_VIEWER_BUNDLE_DATA"] = "0"
 
-    resource = files("sigmf_waterfall_viewer._packaging").joinpath(
-        "sigmf_waterfall_viewer.spec"
-    )
+    resource = files("sigmf_viewer._packaging").joinpath("sigmf_viewer.spec")
     with as_file(resource) as spec_path:
         run(
             [

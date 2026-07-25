@@ -29,7 +29,7 @@ _NATIVE_FULLSCREEN_SCRIPT = r"""
     button.textContent = active ? '×' : '⛶';
     window.dispatchEvent(new Event('resize'));
   };
-  window.__sigmfWaterfallSetNativeFullscreen = render;
+  window.__sigmfViewerSetNativeFullscreen = render;
   const toggle = async () => {
     if (!window.pywebview?.api?.toggle_fullscreen) return;
     button.disabled = true;
@@ -97,7 +97,7 @@ class _DesktopApi:
             self._fullscreen = False
             window = self._window
         if window is not None:
-            window.evaluate_js("window.__sigmfWaterfallSetNativeFullscreen?.(false)")
+            window.evaluate_js("window.__sigmfViewerSetNativeFullscreen?.(false)")
 
 
 def _install_native_fullscreen(window: Any) -> None:
@@ -106,7 +106,7 @@ def _install_native_fullscreen(window: Any) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description=("Open the SigMF Waterfall Viewer in a native desktop window"),
+        description=("Open the SigMF Viewer in a native desktop window"),
     )
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--data-root", type=Path)
@@ -121,8 +121,7 @@ def main() -> None:
         import webview
     except ImportError as exc:  # pragma: no cover
         raise SystemExit(
-            "Install desktop support first: "
-            'pip install "sigmf-waterfall-viewer[desktop]"'
+            'Install desktop support first: pip install "sigmf-viewer[desktop]"'
         ) from exc
 
     with runtime_profile(
@@ -142,7 +141,7 @@ def main() -> None:
         server.daemon_threads = True
         thread = Thread(
             target=server.serve_forever,
-            name="sigmf-waterfall-viewer-server",
+            name="sigmf-viewer-server",
             daemon=True,
         )
         thread.start()

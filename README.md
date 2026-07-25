@@ -1,4 +1,4 @@
-# SigMF Waterfall Viewer
+# SigMF Viewer
 
 A focused local browser for SigMF recordings, built as one Sigvue
 `Workspace`. The application opens directly onto a flat recording catalog and
@@ -16,7 +16,7 @@ every candidate independently, so a missing payload, malformed metadata file,
 or broken collection is omitted without hiding the remaining usable data.
 
 ```text
-src/sigmf_waterfall_viewer/
+src/sigmf_viewer/
 ├── sigmf.py       format validation, collections, and exact ranged sample I/O
 ├── reader.py      fault-tolerant flat discovery and window selection
 ├── models.py      recordings, collections, windows, and analysis values
@@ -68,7 +68,7 @@ the installed package, wheel, and console entry points.
 ## Run
 
 ```bash
-sigmf-waterfall-viewer
+sigmf-viewer
 ```
 
 Open <http://127.0.0.1:8000>. With all example data present, discovery shows
@@ -78,16 +78,16 @@ standalone recordings.
 Point the application at another directory, pair, or collection:
 
 ```bash
-sigmf-waterfall-viewer --data-root /path/to/sigmf
-sigmf-waterfall-viewer --recording /path/to/capture.sigmf-meta
-sigmf-waterfall-viewer --recording /path/to/capture.sigmf-data
-sigmf-waterfall-viewer --recording /path/to/campaign.sigmf-collection
+sigmf-viewer --data-root /path/to/sigmf
+sigmf-viewer --recording /path/to/capture.sigmf-meta
+sigmf-viewer --recording /path/to/capture.sigmf-data
+sigmf-viewer --recording /path/to/campaign.sigmf-collection
 ```
 
 An explicit browser profile remains supported:
 
 ```bash
-sigmf-waterfall-viewer --config browser.toml
+sigmf-viewer --config browser.toml
 ```
 
 The reader supports standard real and complex signed, unsigned, and
@@ -108,7 +108,8 @@ Opening an item provides:
 - explicit fast-time FFT size and slow-time overlap controls;
 - a visual picker with ten colormaps;
 - fixed user-controlled waterfall and average-PSD dBFS ranges;
-- a compact average PSD occupying 10% of the plot height;
+- a compact average PSD occupying 10% of the plot height above the waterfall;
+- independent switches for the average PSD and progressive raster rendering;
 - viewport-aware heatmap rendering for the currently visible time/frequency
   bounds after every zoom;
 - stable zoom limits when the window, FFT size, or style controls change;
@@ -120,11 +121,11 @@ Viewport rasterization changes display cells only. It does not alter samples,
 STFT values, annotation coordinates, or the headless pipeline. Plotly Home
 and double-click reset always restore the complete current buffer.
 
-The compact timeline spectrum also covers the complete source: every sample
-is read once into non-overlapping time bins, FFT power is combined in linear
-units, and only the small frequency-by-time result is sent to the browser.
-It is deliberately rotated relative to the main waterfall: recording time
-runs left-to-right along the scrub bar and frequency runs bottom-to-top.
+Both the main waterfall and its compact timeline spectrum place recording
+time left-to-right and frequency bottom-to-top. The timeline covers the
+complete source: every sample is read once into non-overlapping time bins,
+FFT power is combined in linear units, and only the small frequency-by-time
+result is sent to the browser.
 `overview_bins`, `overview_frequency_bins`, and `overview_fft_size` in the
 workspace configuration control that summary without changing the 30 px bar.
 
@@ -136,18 +137,18 @@ renders every member and every channel. The workspace action renders all
 catalog items. Deterministic results live under `outputs/`, so completed
 outputs are recognized after restart.
 
-The default image is 2400×1600 with the same 10% average-PSD strip. Rendering
-walks every STFT frame across the complete recording in bounded-memory
-chunks. If there are more slow-time frames than output rows, linear power is
-averaged only among frames assigned to the same output row; no source
-interval is skipped.
+The default image is 2400×1600 with the same top 10% average-PSD strip.
+Rendering walks every STFT frame across the complete recording in
+bounded-memory chunks. If there are more slow-time frames than output
+columns, linear power is averaged only among frames assigned to the same
+output column; no source interval is skipped.
 
 Batch actions also run without starting the server:
 
 ```bash
-sigmf-waterfall-viewer batch --list
-sigmf-waterfall-viewer batch \
-  --workspace sigmf-waterfall \
+sigmf-viewer batch --list
+sigmf-viewer batch \
+  --workspace sigmf-viewer \
   --item 'lte::public-lte.sigmf-collection' \
   --action render-high-resolution-waterfall
 ```
@@ -160,7 +161,7 @@ The same format reader, exact window operation, analysis, and plotting
 functions work in an ordinary script:
 
 ```python
-from sigmf_waterfall_viewer import (
+from sigmf_viewer import (
     WaterfallSettings,
     analyze,
     open_recording,
@@ -180,7 +181,7 @@ plot_waterfall(products).show()
 The reusable reader also exposes the exact browser buffering policy:
 
 ```python
-from sigmf_waterfall_viewer import create_reader
+from sigmf_viewer import create_reader
 
 reader = create_reader(
     {
@@ -203,18 +204,18 @@ the optional `member=` keyword.
 
 ```bash
 python -m pip install -e ".[desktop]"
-sigmf-waterfall-viewer-desktop
-sigmf-waterfall-viewer-build
+sigmf-viewer-desktop
+sigmf-viewer-build
 ```
 
-On macOS the build produces `dist/SigMF Waterfall Viewer.app`; Windows and
-Linux produce a platform-specific `dist/sigmf-waterfall-viewer` executable.
+On macOS the build produces `dist/SigMF Viewer.app`; Windows and
+Linux produce a platform-specific `dist/sigmf-viewer` executable.
 When `data/` exists, the default build embeds it. Build a smaller application
 that uses external recordings with:
 
 ```bash
-sigmf-waterfall-viewer-build --without-data
-sigmf-waterfall-viewer-desktop --data-root /path/to/sigmf
+sigmf-viewer-build --without-data
+sigmf-viewer-desktop --data-root /path/to/sigmf
 ```
 
 The frozen app writes batch PNGs to the operating system's application data

@@ -108,7 +108,7 @@ def add_sigmf_annotation(
         "core:sample_start": recording.sample_offset + start_sample,
         "core:sample_count": sample_count,
         "core:comment": comment,
-        "core:generator": "SigMF Waterfall Viewer",
+        "core:generator": "SigMF Viewer",
         "core:uuid": identifier,
         "core:freq_lower_edge": float(frequency_lower_hz),
         "core:freq_upper_edge": float(frequency_upper_hz),
@@ -125,7 +125,7 @@ def add_sigmf_annotation(
 
 
 def _fields() -> tuple[AnnotationField, ...]:
-    view = "sigmf-waterfall"
+    view = "sigmf-viewer"
     return (
         AnnotationField(
             "start_seconds",

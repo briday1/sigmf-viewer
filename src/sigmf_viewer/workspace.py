@@ -14,8 +14,8 @@ from .view import view
 def create_workspace(config) -> Workspace:
     values = WorkspaceConfig(config)
     return Workspace(
-        identifier="sigmf-waterfall",
-        name="SigMF Waterfall",
+        identifier="sigmf-viewer",
+        name="SigMF Viewer",
         description=(
             "Browse standalone SigMF pairs and collections, then "
             "inspect exact ranged sample windows as spectrum/waterfall views."

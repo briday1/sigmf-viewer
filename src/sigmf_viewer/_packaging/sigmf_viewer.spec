@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller build for the native SigMF Waterfall Viewer."""
+"""PyInstaller build for the native SigMF Viewer."""
 
 import importlib.util
 from importlib.metadata import version
@@ -10,10 +10,10 @@ import sys
 from PyInstaller.utils.hooks import copy_metadata
 
 
-package_spec = importlib.util.find_spec("sigmf_waterfall_viewer")
+package_spec = importlib.util.find_spec("sigmf_viewer")
 if package_spec is None or not package_spec.submodule_search_locations:
     raise RuntimeError(
-        "sigmf-waterfall-viewer must be installed before building"
+        "sigmf-viewer must be installed before building"
     )
 package_root = Path(
     next(iter(package_spec.submodule_search_locations))
@@ -23,10 +23,10 @@ checkout_root = source_root.parent
 
 datas = []
 binaries = []
-hiddenimports = ["sigmf_waterfall_viewer.workspace"]
+hiddenimports = ["sigmf_viewer.workspace"]
 
 for distribution in (
-    "sigmf-waterfall-viewer",
+    "sigmf-viewer",
     "sigvue",
     "plotly",
     "matplotlib",
@@ -40,11 +40,11 @@ for distribution in (
         pass
 
 bundle_mode = os.environ.get(
-    "SIGMF_WATERFALL_VIEWER_BUNDLE_DATA",
+    "SIGMF_VIEWER_BUNDLE_DATA",
     "auto",
 )
 configured_data = os.environ.get(
-    "SIGMF_WATERFALL_VIEWER_DATA_ROOT"
+    "SIGMF_VIEWER_DATA_ROOT"
 )
 checkout_data = checkout_root / "data"
 working_data = Path.cwd() / "data"
@@ -85,7 +85,7 @@ if sys.platform == "darwin":
         a.scripts,
         [],
         exclude_binaries=True,
-        name="sigmf-waterfall-viewer",
+        name="sigmf-viewer",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -104,13 +104,13 @@ if sys.platform == "darwin":
         strip=False,
         upx=False,
         upx_exclude=[],
-        name="sigmf-waterfall-viewer",
+        name="sigmf-viewer",
     )
     app = BUNDLE(
         collected,
-        name="SigMF Waterfall Viewer.app",
-        version=version("sigmf-waterfall-viewer"),
-        bundle_identifier="com.sigvue.sigmf-waterfall-viewer",
+        name="SigMF Viewer.app",
+        version=version("sigmf-viewer"),
+        bundle_identifier="com.sigvue.sigmf-viewer",
     )
 else:
     exe = EXE(
@@ -119,7 +119,7 @@ else:
         a.binaries,
         a.datas,
         [],
-        name="sigmf-waterfall-viewer",
+        name="sigmf-viewer",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,

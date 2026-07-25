@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sigmf-waterfall-viewer"
+name = "sigmf-viewer"
 version = "0.1.0"
 description = "A focused windowed SigMF spectrum and waterfall browser built with Sigvue"
 readme = "README.md"
@@ -21,12 +21,12 @@ release = ["build>=1.2", "twine>=5.0"]
 desktop = ["pyinstaller>=6.0", "pywebview>=6.0"]
 
 [project.scripts]
-sigmf-waterfall-viewer = "sigmf_waterfall_viewer.cli:main"
-sigmf-waterfall-viewer-desktop = "sigmf_waterfall_viewer.desktop:main"
-sigmf-waterfall-viewer-build = "sigmf_waterfall_viewer._packaging.build:main"
+sigmf-viewer = "sigmf_viewer.cli:main"
+sigmf-viewer-desktop = "sigmf_viewer.desktop:main"
+sigmf-viewer-build = "sigmf_viewer._packaging.build:main"
 
 [project.entry-points."sigvue.workspaces"]
-sigmf-waterfall-viewer = "sigmf_waterfall_viewer.workspace:create_workspace"
+sigmf-viewer = "sigmf_viewer.workspace:create_workspace"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -35,7 +35,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-sigmf_waterfall_viewer = ["_packaging/*.spec"]
+sigmf_viewer = ["_packaging/*.spec"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

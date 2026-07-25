@@ -16,8 +16,8 @@ except ModuleNotFoundError:  # pragma: no cover
 from sigvue.profile import load_browser_profile
 
 from scripts.download_data import download_datasets
-from sigmf_waterfall_viewer import cli, desktop
-from sigmf_waterfall_viewer.runtime import runtime_profile
+from sigmf_viewer import cli, desktop
+from sigmf_viewer.runtime import runtime_profile
 
 
 class FakeEvent:
@@ -63,15 +63,15 @@ def test_runtime_profile_uses_explicit_paths_and_flat_discovery():
             profile = load_browser_profile(profile_path)
             payload = tomllib.loads(profile_path.read_text(encoding="utf-8"))
 
-        assert profile.title == "SigMF Waterfall Viewer"
+        assert profile.title == "SigMF Viewer"
         assert len(profile.workspaces) == 1
         workspace = profile.workspaces[0]
-        assert workspace.module_name == "sigmf_waterfall_viewer.workspace"
+        assert workspace.module_name == "sigmf_viewer.workspace"
         assert workspace.attribute == "create_workspace"
         assert workspace.flatten_discovery is True
         assert Path(workspace.configuration["data_root"]) == data.resolve()
         assert Path(workspace.configuration["output_root"]) == output.resolve()
-        assert payload["workspaces"][0]["id"] == "sigmf-waterfall"
+        assert payload["workspaces"][0]["id"] == "sigmf-viewer"
         assert output.is_dir()
         assert not profile_path.exists()
 
@@ -93,7 +93,7 @@ def test_cli_accepts_one_recording_and_preserves_sigvue_arguments():
                 sys,
                 "argv",
                 [
-                    "sigmf-waterfall-viewer",
+                    "sigmf-viewer",
                     "batch",
                     "--recording",
                     str(recording),
@@ -143,7 +143,7 @@ def test_desktop_hosts_live_private_server_and_native_fullscreen():
                 sys,
                 "argv",
                 [
-                    "sigmf-waterfall-viewer-desktop",
+                    "sigmf-viewer-desktop",
                     "--data-root",
                     str(root / "data"),
                     "--output-root",
@@ -157,7 +157,7 @@ def test_desktop_hosts_live_private_server_and_native_fullscreen():
         ):
             desktop.main()
 
-        assert result["title"] == "SigMF Waterfall Viewer"
+        assert result["title"] == "SigMF Viewer"
         assert result["url"].startswith("http://127.0.0.1:")
         assert result["health"] == {"status": "ok"}
         assert result["options"]["width"] == 1200
@@ -172,9 +172,7 @@ def test_desktop_hosts_live_private_server_and_native_fullscreen():
         assert len(window.scripts) == 2
         assert "#fullscreen-toggle" in window.scripts[0]
         assert "stopImmediatePropagation" in window.scripts[0]
-        assert window.scripts[1] == (
-            "window.__sigmfWaterfallSetNativeFullscreen?.(false)"
-        )
+        assert window.scripts[1] == ("window.__sigmfViewerSetNativeFullscreen?.(false)")
         assert result["start_options"] == {"debug": False}
 
 
@@ -206,15 +204,10 @@ def test_package_declares_all_delivery_entry_points_and_dependencies():
     payload = tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))
     scripts = payload["project"]["scripts"]
 
-    assert scripts["sigmf-waterfall-viewer"] == "sigmf_waterfall_viewer.cli:main"
-    assert (
-        scripts["sigmf-waterfall-viewer-desktop"]
-        == "sigmf_waterfall_viewer.desktop:main"
-    )
-    assert (
-        scripts["sigmf-waterfall-viewer-build"]
-        == "sigmf_waterfall_viewer._packaging.build:main"
-    )
+    assert payload["project"]["name"] == "sigmf-viewer"
+    assert scripts["sigmf-viewer"] == "sigmf_viewer.cli:main"
+    assert scripts["sigmf-viewer-desktop"] == "sigmf_viewer.desktop:main"
+    assert scripts["sigmf-viewer-build"] == "sigmf_viewer._packaging.build:main"
     dependencies = {
         requirement.split(">=", 1)[0]
         for requirement in payload["project"]["dependencies"]
@@ -230,11 +223,7 @@ def test_package_declares_all_delivery_entry_points_and_dependencies():
         for requirement in payload["project"]["optional-dependencies"]["desktop"]
     }
     assert (
-        project
-        / "src"
-        / "sigmf_waterfall_viewer"
-        / "_packaging"
-        / "sigmf_waterfall_viewer.spec"
+        project / "src" / "sigmf_viewer" / "_packaging" / "sigmf_viewer.spec"
     ).is_file()
-    assert "sigmf-waterfall-download" not in scripts
-    assert not (project / "src" / "sigmf_waterfall_viewer" / "download.py").exists()
+    assert "sigmf-viewer-download" not in scripts
+    assert not (project / "src" / "sigmf_viewer" / "download.py").exists()

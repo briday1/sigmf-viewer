@@ -2,31 +2,32 @@ from __future__ import annotations
 
 import json
 import struct
+from base64 import b64decode
 from pathlib import Path
 
 import numpy as np
 from sigvue import AnnotationRequest
 
-from sigmf_waterfall_viewer.analysis import analyze
-from sigmf_waterfall_viewer.annotations import (
+from sigmf_viewer.analysis import analyze
+from sigmf_viewer.annotations import (
     WaterfallAnnotator,
     read_sigmf_annotations,
 )
-from sigmf_waterfall_viewer.batch import (
+from sigmf_viewer.batch import (
     RENDER_WATERFALL,
     SigMFWaterfallBatch,
     render_recording_png,
 )
-from sigmf_waterfall_viewer.models import SigMFCollection, WaterfallSettings
-from sigmf_waterfall_viewer.plots import waterfall_figure
-from sigmf_waterfall_viewer.reader import (
+from sigmf_viewer.models import SigMFCollection, WaterfallSettings
+from sigmf_viewer.plots import waterfall_figure
+from sigmf_viewer.reader import (
     create_files,
     create_reader,
     power_overview,
     power_spectrum_overview,
 )
-from sigmf_waterfall_viewer.sigmf import open_recording, read_window
-from sigmf_waterfall_viewer.workspace import create_workspace
+from sigmf_viewer.sigmf import open_recording, read_window
+from sigmf_viewer.workspace import create_workspace
 
 
 def write_ci16(
@@ -278,11 +279,94 @@ def test_window_reader_analysis_and_plot_keep_absolute_axes(tmp_path):
         overview_line,
         power_overview(recording, bins=20),
     )
+    assert np.allclose(figure.data[0].x, products.frequency_mhz)
+    assert np.allclose(figure.data[0].y, products.spectrum_dbfs)
+    assert np.asarray(figure.data[1].z).shape == products.waterfall_dbfs.T.shape
+    assert figure.layout.yaxis.title.text == "Power (dBFS)"
+    assert figure.layout.xaxis2.title.text == "Recording time (ms)"
+    assert figure.layout.yaxis2.title.text == "RF frequency (MHz)"
     assert figure.layout.xaxis2.tickformat == ".2f"
     assert figure.layout.yaxis2.tickformat == ".2f"
     assert figure.layout.xaxis2.autorange is False
     assert figure.layout.yaxis2.autorange is False
-    assert "sigmf-waterfall" in figure.layout.uirevision
+    assert "sigmf-viewer" in figure.layout.uirevision
+
+
+def test_progressive_raster_dimensions_and_switches_follow_rotated_axes(tmp_path):
+    metadata, _ = write_ci16(tmp_path, "raster", samples=8192)
+    recording = open_recording(metadata)
+    products = analyze(
+        read_window(recording, 1000, 3000),
+        WaterfallSettings(fft_size=256, overlap_percent=50, channel=0),
+    )
+
+    rastered = waterfall_figure(
+        products,
+        render_width=5,
+        render_height=7,
+    )
+    assert len(rastered.layout.images) == 1
+    encoded = str(rastered.layout.images[0].source).split(",", 1)[1]
+    raster = b64decode(encoded)
+    assert raster[:8] == b"\x89PNG\r\n\x1a\n"
+    assert struct.unpack(">II", raster[16:24]) == (5, 7)
+    assert rastered.layout.images[0].xref == "x2"
+    assert rastered.layout.images[0].yref == "y2"
+
+    time_base = [
+        float(products.time_edges_ms[0]),
+        float(products.time_edges_ms[-1]),
+    ]
+    frequency_step = float(products.frequency_mhz[1] - products.frequency_mhz[0])
+    frequency_base = [
+        float(products.frequency_mhz[0] - frequency_step / 2),
+        float(products.frequency_mhz[-1] + frequency_step / 2),
+    ]
+    first_zoom = waterfall_figure(
+        products,
+        viewport={
+            "xaxis2": {"range": [14.0, 24.0], "base": time_base},
+            "yaxis2": {
+                "range": [frequency_base[0], sum(frequency_base) / 2],
+                "base": frequency_base,
+            },
+        },
+        render_width=2,
+        render_height=2,
+    )
+    second_zoom = waterfall_figure(
+        products,
+        viewport={
+            "xaxis2": {"range": [16.0, 20.0], "base": time_base},
+            "yaxis2": {
+                "range": [
+                    frequency_base[0],
+                    frequency_base[0] + (frequency_base[1] - frequency_base[0]) / 4,
+                ],
+                "base": frequency_base,
+            },
+        },
+        render_width=2,
+        render_height=2,
+    )
+    assert first_zoom.layout.images[0].sizex > second_zoom.layout.images[0].sizex
+    assert first_zoom.layout.images[0].sizey > second_zoom.layout.images[0].sizey
+
+    direct = waterfall_figure(
+        products,
+        progressive_render=False,
+        show_spectrum=False,
+        render_width=5,
+        render_height=7,
+    )
+    assert not direct.layout.images
+    assert len(direct.data) == 1
+    assert direct.data[0].xaxis == "x2"
+    assert direct.data[0].yaxis == "y2"
+    assert np.allclose(direct.data[0].z, products.waterfall_dbfs.T)
+    assert direct.layout.xaxis2.title.text == "Recording time (ms)"
+    assert direct.layout.yaxis2.title.text == "RF frequency (MHz)"
+    assert direct.layout.yaxis2.domain[1] - direct.layout.yaxis2.domain[0] > 0.99
 
 
 def test_annotations_are_persisted_and_rendered_as_vector_traces(tmp_path):
@@ -317,6 +401,11 @@ def test_annotations_are_persisted_and_rendered_as_vector_traces(tmp_path):
         "Annotations",
         "Annotation details",
     ]
+    assert list(figure.data[-2].x[:5]) == [2.0, 6.0, 6.0, 2.0, 2.0]
+    assert np.allclose(
+        figure.data[-2].y[:5],
+        [805.99, 805.99, 806.01, 806.01, 805.99],
+    )
 
 
 def test_batch_png_is_exact_size_and_has_durable_contract(tmp_path):
@@ -382,7 +471,7 @@ def test_workspace_is_one_lazy_windowed_pipeline(tmp_path):
         }
     )
 
-    assert workspace.metadata.identifier == "sigmf-waterfall"
+    assert workspace.metadata.identifier == "sigmf-viewer"
     assert workspace.lazy_views is True
     assert workspace.flatten_discovery is True
     assert len(workspace.reader.resources()) == 1

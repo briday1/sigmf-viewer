@@ -14,7 +14,7 @@ from .runtime import runtime_profile
 
 def _print_application_options() -> None:
     print(
-        "SigMF Waterfall Viewer defaults:\n"
+        "SigMF Viewer defaults:\n"
         "  --data-root PATH    Recursively discover a SigMF directory\n"
         "  --recording PATH    Open one pair or .sigmf-collection\n"
         "  --output-root PATH  Durable PNG output directory\n"

@@ -58,10 +58,12 @@ def waterfall_figure(
     colormap: str = "Portland",
     zmin: float | None = None,
     zmax: float | None = None,
-    spectrum_ymin: float | None = None,
-    spectrum_ymax: float | None = None,
+    spectrum_min: float | None = None,
+    spectrum_max: float | None = None,
     spectrum_style: object | None = None,
+    show_spectrum: bool = True,
     show_colorbar: bool = True,
+    progressive_render: bool = True,
     render_width: int = 1024,
     render_height: int = 512,
     aggregation: str = "mean",
@@ -70,13 +72,13 @@ def waterfall_figure(
     annotation_width: float = 1.5,
     annotation_opacity: float = 0.8,
 ) -> go.Figure:
-    """Build the average-PSD strip and viewport-aware waterfall."""
+    """Build the average-PSD strip above a time-x/frequency-y waterfall."""
     automatic_waterfall, automatic_spectrum = automatic_dbfs_ranges(products)
     zmin, zmax = automatic_waterfall if zmin is None or zmax is None else (zmin, zmax)
-    spectrum_ymin, spectrum_ymax = (
+    spectrum_min, spectrum_max = (
         automatic_spectrum
-        if spectrum_ymin is None or spectrum_ymax is None
-        else (spectrum_ymin, spectrum_ymax)
+        if spectrum_min is None or spectrum_max is None
+        else (spectrum_min, spectrum_max)
     )
     spectrum_mode = getattr(spectrum_style, "mode", "lines")
     spectrum_line = getattr(
@@ -88,39 +90,45 @@ def waterfall_figure(
     figure = make_subplots(
         rows=2,
         cols=1,
-        shared_xaxes=True,
-        row_heights=(0.10, 0.90),
-        vertical_spacing=0.025,
+        row_heights=(0.10, 0.90) if show_spectrum else (1e-6, 1.0),
+        vertical_spacing=0.025 if show_spectrum else 0.0,
     )
-    figure.add_trace(
-        go.Scatter(
-            x=products.frequency_mhz,
-            y=products.spectrum_dbfs,
-            mode=spectrum_mode,
-            line=spectrum_line,
-            marker=spectrum_marker,
-            name="Average spectrum",
-        ),
-        row=1,
-        col=1,
-    )
-    add_viewport_heatmap(
-        figure,
-        viewport=viewport,
-        x=products.frequency_mhz,
-        y=products.time_edges_ms,
-        z=products.waterfall_dbfs,
-        zmin=zmin,
-        zmax=zmax,
-        colorscale=colormap,
-        showscale=show_colorbar,
-        colorbar={"title": "dBFS"},
-        render_width=render_width,
-        render_height=render_height,
-        aggregation=aggregation,
-        row=2,
-        col=1,
-    )
+    if show_spectrum:
+        figure.add_trace(
+            go.Scatter(
+                x=products.frequency_mhz,
+                y=products.spectrum_dbfs,
+                mode=spectrum_mode,
+                line=spectrum_line,
+                marker=spectrum_marker,
+                name="Average spectrum",
+            ),
+            row=1,
+            col=1,
+        )
+    heatmap = {
+        "x": products.time_edges_ms,
+        "y": products.frequency_mhz,
+        "z": products.waterfall_dbfs.T,
+        "zmin": zmin,
+        "zmax": zmax,
+        "colorscale": colormap,
+        "showscale": show_colorbar,
+        "colorbar": {"title": "dBFS"},
+    }
+    if progressive_render:
+        add_viewport_heatmap(
+            figure,
+            viewport=viewport,
+            render_width=render_width,
+            render_height=render_height,
+            aggregation=aggregation,
+            row=2,
+            col=1,
+            **heatmap,
+        )
+    else:
+        figure.add_trace(go.Heatmap(**heatmap), row=2, col=1)
     frequency_step = (
         float(abs(products.frequency_mhz[1] - products.frequency_mhz[0]))
         if products.frequency_mhz.size > 1
@@ -142,14 +150,22 @@ def waterfall_figure(
         width=annotation_width,
         opacity=annotation_opacity,
     )
-    figure.update_yaxes(
-        title_text="Power (dBFS)",
-        range=[spectrum_ymin, spectrum_ymax],
-        autorange=False,
-        row=1,
-        col=1,
-    )
-    figure.update_yaxes(
+    if show_spectrum:
+        figure.update_yaxes(
+            title_text="Power (dBFS)",
+            range=[spectrum_min, spectrum_max],
+            autorange=False,
+            row=1,
+            col=1,
+        )
+        figure.update_xaxes(
+            range=frequency_range,
+            autorange=False,
+            tickformat=".2f",
+            row=1,
+            col=1,
+        )
+    figure.update_xaxes(
         title_text="Recording time (ms)",
         range=[
             float(products.time_edges_ms[0]),
@@ -160,7 +176,7 @@ def waterfall_figure(
         row=2,
         col=1,
     )
-    figure.update_xaxes(
+    figure.update_yaxes(
         title_text="RF frequency (MHz)",
         range=frequency_range,
         autorange=False,
@@ -169,7 +185,7 @@ def waterfall_figure(
         col=1,
     )
     figure.update_layout(
-        uirevision=(f"sigmf-waterfall:{products.recording.metadata_path}")
+        uirevision=(f"sigmf-viewer:{products.recording.metadata_path}")
     )
     return figure
 
@@ -217,15 +233,15 @@ def _add_annotation_regions(
         ):
             continue
         if stop > start:
-            line_x.extend((lower, upper, upper, lower, lower, None))
-            line_y.extend((start, start, stop, stop, start, None))
+            line_x.extend((start, stop, stop, start, start, None))
+            line_y.extend((lower, lower, upper, upper, lower, None))
         else:
-            line_x.extend((lower, upper, None))
-            line_y.extend((start, start, None))
-        hover_x.append(
+            line_x.extend((start, start, None))
+            line_y.extend((lower, upper, None))
+        hover_x.append((max(start, time_lower) + min(stop, time_upper)) / 2.0)
+        hover_y.append(
             (max(lower, frequency_lower) + min(upper, frequency_upper)) / 2.0
         )
-        hover_y.append((max(start, time_lower) + min(stop, time_upper)) / 2.0)
         details = [
             f"<b>{escape(annotation.label or 'Annotation')}</b>",
             f"Time: {start:.9g}–{stop:.9g} ms",

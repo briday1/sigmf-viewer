@@ -62,7 +62,7 @@ def _recording_power_raster(
     time_bins: int,
     chunk_frames: int = 256,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Read every STFT frame and aggregate power into bounded output rows."""
+    """Read every STFT frame and aggregate power into bounded time bins."""
     if not 0 <= channel < recording.channel_count:
         raise ValueError("batch channel is outside the recording")
     effective_fft = min(fft_size, recording.sample_count)
@@ -221,7 +221,6 @@ def render_recording_png(
     spectrum_axes = figure.add_subplot(grid[0, 0])
     waterfall_axes = figure.add_subplot(
         grid[1, 0],
-        sharex=spectrum_axes,
     )
     colorbar_axes = figure.add_subplot(grid[1, 1])
     frequency_centers = (frequency_edges[:-1] + frequency_edges[1:]) / 2.0
@@ -236,17 +235,17 @@ def render_recording_png(
     spectrum_axes.grid(alpha=0.18, linewidth=0.5)
     spectrum_axes.tick_params(labelbottom=False)
     image = waterfall_axes.pcolormesh(
-        frequency_edges,
         time_edges,
-        waterfall_dbfs,
+        frequency_edges,
+        waterfall_dbfs.T,
         shading="flat",
         cmap="turbo",
         vmin=zmin,
         vmax=zmax,
         rasterized=True,
     )
-    waterfall_axes.set_xlabel("RF frequency (MHz)")
-    waterfall_axes.set_ylabel("Recording time (s)")
+    waterfall_axes.set_xlabel("Recording time (s)")
+    waterfall_axes.set_ylabel("RF frequency (MHz)")
     waterfall_axes.grid(
         color="white",
         alpha=0.10,
@@ -292,7 +291,7 @@ def render_recording_png(
                 "Title": title,
                 "Description": (
                     "Every STFT frame was read; power is averaged only when "
-                    "multiple frames share one output-pixel row."
+                    "multiple frames share one output-pixel column."
                 ),
             },
         )

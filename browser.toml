@@ -1,12 +1,12 @@
 [browser]
-title = "SigMF Waterfall Viewer"
+title = "SigMF Viewer"
 subtitle = "Windowed spectrum analysis for individual recordings and collections"
 
 [[workspaces]]
-use = "sigmf-waterfall-viewer"
+use = "sigmf-viewer"
 path = "."
-id = "sigmf-waterfall"
-name = "SigMF Waterfall"
+id = "sigmf-viewer"
+name = "SigMF Viewer"
 description = "Browse SigMF recordings and inspect exact ranged sample windows."
 category = "spectrum monitoring"
 tags = ["SigMF", "windowed", "waterfall", "spectrum", "real data"]
