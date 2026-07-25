@@ -80,11 +80,11 @@ scripts/
 
 ## Install and download
 
-For development alongside Sigvue:
+Install the viewer with native desktop support, then download the example
+recordings:
 
 ```bash
-python -m pip install -e ../Scientific-Workspace-Browser
-python -m pip install -e .
+python -m pip install -e ".[desktop]"
 python scripts/download_data.py
 ```
 
@@ -109,6 +109,18 @@ The downloader is test/development tooling. It is intentionally absent from
 the installed package, wheel, and console entry points.
 
 ## Run
+
+Open the viewer as a native desktop application:
+
+```bash
+sigmf-viewer-desktop
+```
+
+The desktop launcher hosts the same Sigvue interface in a pywebview window,
+including the framework fullscreen control, native folder selection, windowed
+scrubbing, annotations, and batch actions.
+
+To use an ordinary browser instead:
 
 ```bash
 sigmf-viewer
@@ -254,12 +266,11 @@ the optional `member=` keyword.
 ## Native desktop application
 
 ```bash
-python -m pip install -e ".[desktop]"
-sigmf-viewer-desktop
 sigmf-viewer-build
 ```
 
-On macOS the build produces `dist/SigMF Viewer.app`; Windows and
+The desktop extra installed during setup includes both pywebview and
+PyInstaller. On macOS the build produces `dist/SigMF Viewer.app`; Windows and
 Linux produce a platform-specific `dist/sigmf-viewer` executable.
 When `data/` exists, the default build embeds it. Build a smaller application
 that uses external recordings with:
