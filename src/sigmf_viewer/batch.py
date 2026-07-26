@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Callable
 
 import matplotlib
 
@@ -61,6 +62,7 @@ def _recording_power_raster(
     overlap_percent: int,
     time_bins: int,
     chunk_frames: int = 256,
+    cancel: Callable[[], None] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Read every STFT frame and aggregate power into bounded time bins."""
     if not 0 <= channel < recording.channel_count:
@@ -82,6 +84,8 @@ def _recording_power_raster(
     normalization = max(float(np.sum(taper)), 1.0)
 
     for first_index in range(0, total_frames, chunk_frames):
+        if cancel is not None:
+            cancel()
         frame_indexes = np.arange(
             first_index,
             min(total_frames, first_index + chunk_frames),
@@ -167,6 +171,7 @@ def render_recording_png(
     time_bins: int = 1200,
     width_pixels: int = 2400,
     height_pixels: int = 1600,
+    cancel: Callable[[], None] | None = None,
 ) -> Path:
     """Render the complete recording to a deterministic PNG atomically."""
     _validate_render_options(
@@ -178,6 +183,8 @@ def render_recording_png(
     )
     if not 0 <= channel < recording.channel_count:
         raise ValueError("batch channel is outside the recording")
+    if cancel is not None:
+        cancel()
     (
         frequency_edges,
         time_edges,
@@ -189,6 +196,7 @@ def render_recording_png(
         fft_size=fft_size,
         overlap_percent=overlap_percent,
         time_bins=time_bins,
+        cancel=cancel,
     )
     finite_waterfall = waterfall_dbfs[np.isfinite(waterfall_dbfs)]
     finite_spectrum = spectrum_dbfs[np.isfinite(spectrum_dbfs)]
@@ -279,6 +287,8 @@ def render_recording_png(
     ) as stream:
         temporary = Path(stream.name)
     try:
+        if cancel is not None:
+            cancel()
         figure.savefig(
             temporary,
             format="png",
@@ -291,6 +301,8 @@ def render_recording_png(
                 ),
             },
         )
+        if cancel is not None:
+            cancel()
         temporary.replace(destination)
     finally:
         plt.close(figure)
@@ -420,6 +432,7 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
         resource: DataResource,
         source: SigMFSource,
         directory: Path,
+        request: BatchRequest,
     ) -> tuple[Path, ...]:
         collection = source if isinstance(source, SigMFCollection) else None
         return tuple(
@@ -438,6 +451,7 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
                 time_bins=self.time_bins,
                 width_pixels=self.width_pixels,
                 height_pixels=self.height_pixels,
+                cancel=request.raise_if_cancelled,
             )
             for recording in self._recordings(source)
             for channel in range(recording.channel_count)
@@ -450,7 +464,7 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
         request: BatchRequest,
         directory: Path,
     ) -> BatchResult:
-        outputs = self._render(resource, source_data, directory)
+        outputs = self._render(resource, source_data, directory, request)
         return BatchResult(
             outputs,
             f"Rendered {len(outputs)} high-resolution waterfall PNG(s)",
@@ -463,14 +477,19 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
         request: BatchRequest,
         directory: Path,
     ) -> BatchResult:
-        outputs = tuple(
-            output
-            for resource in resources
-            for output in self._render(
+        groups = request.each(
+            resources,
+            lambda resource: self._render(
                 resource,
                 open_resource(resource),
                 directory,
-            )
+                request,
+            ),
+        )
+        outputs = tuple(
+            output
+            for group in groups
+            for output in group
         )
         return BatchResult(
             outputs,
