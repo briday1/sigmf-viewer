@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
-import struct
 from pathlib import Path
 
+import matplotlib
 import numpy as np
+import pytest
+from PIL import Image
 from sigvue import AnnotationRequest
 
 from sigmf_viewer.analysis import analyze
@@ -15,10 +17,10 @@ from sigmf_viewer.annotations import (
 from sigmf_viewer.batch import (
     RENDER_WATERFALL,
     SigMFWaterfallBatch,
-    render_recording_png,
+    render_recording_viewer,
 )
 from sigmf_viewer.models import SigMFCollection, WaterfallSettings
-from sigmf_viewer.plots import waterfall_figure
+from sigmf_viewer.plots import automatic_dbfs_ranges, waterfall_figure
 from sigmf_viewer.reader import (
     create_files,
     create_reader,
@@ -32,6 +34,7 @@ from sigmf_viewer.workspace import create_workspace
 def test_default_fft_size_is_256(tmp_path):
     assert WaterfallSettings().fft_size == 256
     assert SigMFWaterfallBatch(tmp_path).fft_size == 256
+    assert SigMFWaterfallBatch(tmp_path).max_native_cells == 75_000_000
 
 
 def write_ci16(
@@ -220,9 +223,6 @@ def test_standard_collection_members_are_grouped_without_duplication(tmp_path):
         tmp_path / "outputs",
         fft_size=256,
         overlap_percent=50,
-        time_bins=64,
-        width_pixels=640,
-        height_pixels=480,
     )
     destination = batch.item_destination(
         collection_resource,
@@ -476,7 +476,7 @@ def test_annotations_are_persisted_and_rendered_as_vector_traces(tmp_path):
     )
 
 
-def test_batch_png_is_exact_size_and_has_durable_contract(tmp_path):
+def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
     metadata, _ = write_ci16(
         tmp_path / "data",
         "multi",
@@ -485,32 +485,68 @@ def test_batch_png_is_exact_size_and_has_durable_contract(tmp_path):
         channel_names=("Primary antenna", "Reference antenna"),
     )
     recording = open_recording(metadata)
-    output = tmp_path / "rendered.png"
-    render_recording_png(
+    output = tmp_path / "short.html"
+    rendered, assets = render_recording_viewer(
         recording,
         output,
         channel=1,
         fft_size=256,
         overlap_percent=50,
-        time_bins=64,
-        width_pixels=640,
-        height_pixels=480,
     )
-    with output.open("rb") as stream:
-        assert stream.read(8) == b"\x89PNG\r\n\x1a\n"
-        length = struct.unpack(">I", stream.read(4))[0]
-        assert stream.read(4) == b"IHDR"
-        width, height = struct.unpack(">II", stream.read(length)[:8])
-    assert (width, height) == (640, 480)
+    short_frames = (4096 + 127) // 128
+    assert rendered == output.resolve()
+    html = output.read_text(encoding="utf-8")
+    assert "Full recording" in html
+    assert "1:1 time" in html
+    assert "frames/screen px" in html
+    metadata_path = next(path for path in assets if path.name == "metadata.json")
+    metadata_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    discovered_min = metadata_payload["dbfsMin"]
+    discovered_max = metadata_payload["dbfsMax"]
+    assert metadata_payload["width"] == short_frames
+    assert metadata_payload["height"] == 256
+    assert metadata_payload["nativeCells"] == short_frames * 256
+    assert discovered_min % 5.0 == 0.0
+    assert discovered_max % 5.0 == 0.0
+    assert discovered_max - discovered_min >= 20.0
+    products = analyze(
+        read_window(recording, 0, recording.sample_count),
+        WaterfallSettings(256, 50, 1),
+    )
+    assert products.waterfall_dbfs.shape == (short_frames, 256)
+    assert (discovered_min, discovered_max) == automatic_dbfs_ranges(products)[0]
+    dbfs = products.waterfall_dbfs[0]
+    expected_colors = np.asarray(
+        matplotlib.colormaps["turbo"](
+            np.clip(
+                (dbfs - discovered_min)
+                / (discovered_max - discovered_min),
+                0.0,
+                1.0,
+            ),
+            bytes=True,
+        ),
+        dtype=np.uint8,
+    )[:, :3]
+    native_tile = (
+        output.with_name("short.assets")
+        / str(metadata_payload["maxLevel"])
+        / "0_0.png"
+    )
+    with Image.open(native_tile) as tile:
+        assert tile.size == (short_frames, 256)
+        pixels = tile.load()
+        for frequency_bin in (0, 63, 127, 255):
+            x = 0
+            y = 255 - frequency_bin
+            expected = tuple(int(value) for value in expected_colors[frequency_bin])
+            assert pixels[x, y] == expected
 
     resource = create_files(metadata).resources()[0]
     batch = SigMFWaterfallBatch(
         tmp_path / "outputs",
         fft_size=256,
         overlap_percent=50,
-        time_bins=64,
-        width_pixels=640,
-        height_pixels=480,
     )
     destination = batch.item_destination(
         resource,
@@ -518,9 +554,32 @@ def test_batch_png_is_exact_size_and_has_durable_contract(tmp_path):
     )
     assert destination.directory == (tmp_path / "outputs").resolve()
     assert len(destination.files) == 2
-    assert all(name.endswith(".png") for name in destination.files)
+    assert all(name.endswith(".html") for name in destination.files)
+    assert all("-tiled.html" in name for name in destination.files)
     assert any("primary-antenna" in name for name in destination.files)
     assert any("reference-antenna" in name for name in destination.files)
+
+
+def test_tiled_batch_rejects_unbounded_native_output_before_rendering(tmp_path):
+    metadata, _ = write_ci16(
+        tmp_path / "data",
+        "capture",
+        samples=4096,
+    )
+    recording = open_recording(metadata)
+    output = tmp_path / "bounded.html"
+
+    with pytest.raises(ValueError, match="interactive windowed viewer"):
+        render_recording_viewer(
+            recording,
+            output,
+            fft_size=256,
+            overlap_percent=50,
+            max_native_cells=8191,
+        )
+
+    assert not output.exists()
+    assert not output.with_name("bounded.assets").exists()
 
 
 def test_workspace_is_one_lazy_windowed_pipeline(tmp_path):
@@ -541,9 +600,8 @@ def test_workspace_is_one_lazy_windowed_pipeline(tmp_path):
             "overview_bins": 12,
             "batch_fft_size": 256,
             "batch_overlap_percent": 50,
-            "batch_time_bins": 64,
-            "batch_width_pixels": 640,
-            "batch_height_pixels": 480,
+            "batch_colormap": "turbo",
+            "batch_max_native_cells": 75_000_000,
         }
     )
 

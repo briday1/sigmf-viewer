@@ -41,6 +41,10 @@ def test_runtime_profile_uses_explicit_paths_and_flat_discovery():
         assert Path(workspace.configuration["output_root"]) == output.resolve()
         assert payload["workspaces"][0]["id"] == "sigmf-viewer"
         assert payload["workspaces"][0]["config"]["batch_fft_size"] == 256
+        assert (
+            payload["workspaces"][0]["config"]["batch_max_native_cells"]
+            == 75_000_000
+        )
         assert output.is_dir()
         assert not profile_path.exists()
 
@@ -123,6 +127,7 @@ def test_package_leaves_delivery_to_sigvue():
     assert {
         "matplotlib",
         "numpy",
+        "Pillow",
         "plotly",
         "sigvue",
     } == dependencies

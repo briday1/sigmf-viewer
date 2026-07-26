@@ -30,14 +30,10 @@ def create_workspace(config) -> Workspace:
                 "batch_overlap_percent",
                 50,
             ),
-            time_bins=values.integer("batch_time_bins", 1200),
-            width_pixels=values.integer(
-                "batch_width_pixels",
-                2400,
-            ),
-            height_pixels=values.integer(
-                "batch_height_pixels",
-                1600,
+            colormap=values.string("batch_colormap", "turbo"),
+            max_native_cells=values.integer(
+                "batch_max_native_cells",
+                75_000_000,
             ),
         ),
         category="spectrum monitoring",
