@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sigmf-viewer"
-version = "0.2.3"
+version = "0.2.4"
 description = "A focused windowed SigMF spectrum and waterfall browser built with Sigvue"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,7 +13,7 @@ dependencies = [
     "numpy>=1.24",
     "Pillow>=10.0",
     "plotly>=6.1.1",
-    "sigvue>=2026.58",
+    "sigvue>=2026.59",
 ]
 
 [project.optional-dependencies]

@@ -17,7 +17,7 @@ def _print_application_options() -> None:
         "SigMF Viewer defaults:\n"
         "  --data-root PATH    Recursively discover a SigMF directory\n"
         "  --recording PATH    Open one pair or .sigmf-collection\n"
-        "  --output-root PATH  Durable PNG output directory\n"
+        "  --output-root PATH  Durable tiled-viewer output directory\n"
         "\n"
         "All Sigvue server and batch options are also available.\n"
     )

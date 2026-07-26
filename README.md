@@ -50,9 +50,10 @@ Batch mode renders a tiled, zoomable time–frequency viewer for an entire
 recording without starting the interactive server. It opens at a readable
 whole-recording view with time/frequency axes and a dBFS colorbar. Zooming
 progressively selects finer tiles until every STFT frame and FFT bin maps to an
-exact native pixel. The color scale is discovered independently for each
-recording with the same robust percentile and 5 dB rounding rule used by the
-interactive waterfall.
+exact native pixel. Dragging or a two-finger horizontal touchpad gesture scrubs
+through time; Shift+scroll provides the same pan on a conventional wheel. The
+color scale is discovered independently for each recording with the same
+robust percentile and 5 dB rounding rule used by the interactive waterfall.
 
 Actions can run for one catalog row or the whole workspace; collections expand
 across every member and channel. Rendering is chunked and writes one HTML entry
@@ -201,8 +202,9 @@ catalog items. Deterministic results live under `outputs/`, so completed
 outputs are recognized after restart.
 
 The batch output intentionally omits the interactive average-spectrum strip.
-Coarser levels are display summaries used only while zoomed out; maximum zoom
-loads the native, unaggregated STFT cells. `batch_colormap` controls the tiles.
+Coarser levels use dBFS max-hold summaries so narrow events remain visible
+while zoomed out; maximum zoom loads the native, unaggregated STFT cells.
+`batch_colormap` controls the tiles.
 `batch_max_native_cells` prevents an accidental multi-gigabyte render
 (75 million by default). The included LTE captures fit under that bound.
 A minute at tens of MS/s does not: materializing every STFT cell into one

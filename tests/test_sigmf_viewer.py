@@ -499,6 +499,8 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
     assert "Full recording" in html
     assert "1:1 time" in html
     assert "frames/screen px" in html
+    assert "event.deltaX" in html
+    assert "event.shiftKey" in html
     metadata_path = next(path for path in assets if path.name == "metadata.json")
     metadata_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
     discovered_min = metadata_payload["dbfsMin"]
@@ -541,6 +543,39 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
             y = 255 - frequency_bin
             expected = tuple(int(value) for value in expected_colors[frequency_bin])
             assert pixels[x, y] == expected
+    reduced_tile = (
+        output.with_name("short.assets")
+        / str(metadata_payload["maxLevel"] - 1)
+        / "0_0.png"
+    )
+    normalized_pair = np.clip(
+        (products.waterfall_dbfs[:2] - discovered_min)
+        / (discovered_max - discovered_min),
+        0.0,
+        1.0,
+    )
+    max_hold_indexes = np.max(
+        np.minimum(np.floor(normalized_pair * 256.0), 255.0).astype(
+            np.uint8
+        ),
+        axis=0,
+    )
+    color_lut = np.asarray(
+        matplotlib.colormaps["turbo"](
+            np.arange(256) / 256.0,
+            bytes=True,
+        ),
+        dtype=np.uint8,
+    )[:, :3]
+    with Image.open(reduced_tile) as tile:
+        assert tile.size == (short_frames // 2, 256)
+        pixels = tile.load()
+        for frequency_bin in (0, 63, 127, 255):
+            expected = tuple(
+                int(value)
+                for value in color_lut[max_hold_indexes[frequency_bin]]
+            )
+            assert pixels[0, 255 - frequency_bin] == expected
 
     resource = create_files(metadata).resources()[0]
     batch = SigMFWaterfallBatch(
