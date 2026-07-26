@@ -7,7 +7,7 @@ import matplotlib
 import numpy as np
 import pytest
 from PIL import Image
-from sigvue import AnnotationRequest
+from sigvue import AnnotationRequest, BatchRequest
 
 from sigmf_viewer.analysis import analyze
 from sigmf_viewer.annotations import (
@@ -17,6 +17,7 @@ from sigmf_viewer.annotations import (
 from sigmf_viewer.batch import (
     RENDER_WATERFALL,
     SigMFWaterfallBatch,
+    render_recording_png,
     render_recording_viewer,
 )
 from sigmf_viewer.models import SigMFCollection, WaterfallSettings
@@ -35,6 +36,9 @@ def test_default_fft_size_is_256(tmp_path):
     assert WaterfallSettings().fft_size == 256
     assert SigMFWaterfallBatch(tmp_path).fft_size == 256
     assert SigMFWaterfallBatch(tmp_path).max_native_cells == 75_000_000
+    assert SigMFWaterfallBatch(tmp_path).png_time_bins == 1600
+    assert SigMFWaterfallBatch(tmp_path).png_width_pixels == 2400
+    assert SigMFWaterfallBatch(tmp_path).png_height_pixels == 1600
 
 
 def write_ci16(
@@ -228,9 +232,11 @@ def test_standard_collection_members_are_grouped_without_duplication(tmp_path):
         collection_resource,
         type("Request", (), {"action": RENDER_WATERFALL})(),
     )
-    assert len(destination.files) == 2
+    assert len(destination.files) == 4
     assert any("first" in filename for filename in destination.files)
     assert any("second" in filename for filename in destination.files)
+    assert sum(filename.endswith(".png") for filename in destination.files) == 2
+    assert sum(filename.endswith(".html") for filename in destination.files) == 2
 
 
 def test_invalid_pairs_and_collection_manifests_are_dropped_individually(
@@ -485,6 +491,22 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
         channel_names=("Primary antenna", "Reference antenna"),
     )
     recording = open_recording(metadata)
+    png_output = tmp_path / "short.png"
+    rendered_png = render_recording_png(
+        recording,
+        png_output,
+        channel=1,
+        fft_size=256,
+        overlap_percent=50,
+        time_bins=16,
+        width_pixels=800,
+        height_pixels=600,
+    )
+    assert rendered_png == png_output.resolve()
+    with Image.open(png_output) as image:
+        assert image.format == "PNG"
+        assert image.size == (800, 600)
+
     output = tmp_path / "short.html"
     rendered, assets = render_recording_viewer(
         recording,
@@ -492,6 +514,7 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
         channel=1,
         fft_size=256,
         overlap_percent=50,
+        shareable_png=png_output.name,
     )
     short_frames = (4096 + 127) // 128
     assert rendered == output.resolve()
@@ -501,6 +524,8 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
     assert "frames/screen px" in html
     assert "event.deltaX" in html
     assert "event.shiftKey" in html
+    assert "Full PNG" in html
+    assert '"shareablePng":"short.png"' in html
     metadata_path = next(path for path in assets if path.name == "metadata.json")
     metadata_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
     discovered_min = metadata_payload["dbfsMin"]
@@ -588,9 +613,14 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
         type("Request", (), {"action": RENDER_WATERFALL})(),
     )
     assert destination.directory == (tmp_path / "outputs").resolve()
-    assert len(destination.files) == 2
-    assert all(name.endswith(".html") for name in destination.files)
-    assert all("-tiled.html" in name for name in destination.files)
+    assert len(destination.files) == 4
+    assert sum(name.endswith(".png") for name in destination.files) == 2
+    assert sum(name.endswith(".html") for name in destination.files) == 2
+    assert all(
+        "-tiled.html" in name
+        for name in destination.files
+        if name.endswith(".html")
+    )
     assert any("primary-antenna" in name for name in destination.files)
     assert any("reference-antenna" in name for name in destination.files)
 
@@ -616,6 +646,31 @@ def test_tiled_batch_rejects_unbounded_native_output_before_rendering(tmp_path):
     assert not output.exists()
     assert not output.with_name("bounded.assets").exists()
 
+    resource = create_files(metadata).resources()[0]
+    batch = SigMFWaterfallBatch(
+        tmp_path / "outputs",
+        max_native_cells=8191,
+        png_time_bins=16,
+        png_width_pixels=800,
+        png_height_pixels=600,
+    )
+    destination = batch.item_destination(
+        resource,
+        type("Request", (), {"action": RENDER_WATERFALL})(),
+    )
+    assert len(destination.files) == 1
+    assert destination.files[0].endswith(".png")
+    result = batch.run_item(
+        resource,
+        recording,
+        BatchRequest(RENDER_WATERFALL),
+        destination.directory,
+    )
+    assert len(result.files) == 1
+    assert result.files[0].suffix == ".png"
+    assert result.files[0].is_file()
+    assert result.assets == ()
+
 
 def test_workspace_is_one_lazy_windowed_pipeline(tmp_path):
     write_ci16(
@@ -637,6 +692,9 @@ def test_workspace_is_one_lazy_windowed_pipeline(tmp_path):
             "batch_overlap_percent": 50,
             "batch_colormap": "turbo",
             "batch_max_native_cells": 75_000_000,
+            "batch_png_time_bins": 1600,
+            "batch_png_width_pixels": 2400,
+            "batch_png_height_pixels": 1600,
         }
     )
 
@@ -646,6 +704,9 @@ def test_workspace_is_one_lazy_windowed_pipeline(tmp_path):
     assert len(workspace.reader.resources()) == 1
     assert workspace.annotator is not None
     assert workspace.batch is not None
+    assert workspace.batch.png_time_bins == 1600
+    assert workspace.batch.png_width_pixels == 2400
+    assert workspace.batch.png_height_pixels == 1600
     resource = workspace.discover_items()[0]
     opened = workspace.open_item(resource.identifier)
     assert opened.page.playback.overview_values == ()

@@ -35,6 +35,15 @@ def create_workspace(config) -> Workspace:
                 "batch_max_native_cells",
                 75_000_000,
             ),
+            png_time_bins=values.integer("batch_png_time_bins", 1600),
+            png_width_pixels=values.integer(
+                "batch_png_width_pixels",
+                2400,
+            ),
+            png_height_pixels=values.integer(
+                "batch_png_height_pixels",
+                1600,
+            ),
         ),
         category="spectrum monitoring",
         tags=("SigMF", "windowed", "waterfall", "spectrum"),

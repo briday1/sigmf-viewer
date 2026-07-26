@@ -1,4 +1,4 @@
-"""Durable, tiled whole-recording waterfall rendering."""
+"""Durable shareable PNG and tiled whole-recording waterfall rendering."""
 
 from __future__ import annotations
 
@@ -13,6 +13,9 @@ from uuid import uuid4
 
 import matplotlib
 import numpy as np
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
+from matplotlib.ticker import FormatStrFormatter
 from PIL import Image
 from sigvue import (
     Batch,
@@ -240,6 +243,269 @@ def _frequency_bounds_mhz(
     )
 
 
+def _validate_png_options(
+    *,
+    time_bins: int,
+    width_pixels: int,
+    height_pixels: int,
+) -> None:
+    values = {
+        "time_bins": time_bins,
+        "width_pixels": width_pixels,
+        "height_pixels": height_pixels,
+    }
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value < 1
+        for value in values.values()
+    ):
+        raise ValueError("PNG bins, width, and height must be positive")
+    if width_pixels < 640 or height_pixels < 480:
+        raise ValueError("PNG dimensions must be at least 640 by 480")
+
+
+def _shareable_recording_summary(
+    recording: SigMFRecording,
+    *,
+    channel: int,
+    effective_fft: int,
+    total_frames: int,
+    time_bins: int,
+    cancel: Callable[[], None] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, float]:
+    """Summarize every STFT frame into a bounded max-hold PNG raster."""
+    row_count = min(time_bins, total_frames)
+    waterfall = np.full(
+        (row_count, effective_fft),
+        -np.inf,
+        dtype=np.float32,
+    )
+    spectrum_power_sum = np.zeros(effective_fft, dtype=np.float64)
+    histogram = np.zeros(_HISTOGRAM_EDGES.size - 1, dtype=np.uint64)
+    histogram_ceiling = np.nextafter(_HISTOGRAM_MAX, _HISTOGRAM_MIN)
+    for first_index, dbfs in _recording_power_chunks(
+        recording,
+        channel=channel,
+        effective_fft=effective_fft,
+        total_frames=total_frames,
+        cancel=cancel,
+    ):
+        clipped = np.clip(
+            dbfs,
+            _HISTOGRAM_MIN,
+            histogram_ceiling,
+        )
+        histogram += np.histogram(
+            clipped,
+            bins=_HISTOGRAM_EDGES,
+        )[0].astype(np.uint64)
+        spectrum_power_sum += np.sum(
+            np.power(10.0, dbfs / 10.0),
+            axis=0,
+        )
+        indexes = np.arange(
+            first_index,
+            first_index + dbfs.shape[0],
+            dtype=np.int64,
+        )
+        rows = np.minimum(
+            row_count - 1,
+            indexes * row_count // total_frames,
+        )
+        for row in np.unique(rows):
+            selected = rows == row
+            waterfall[int(row)] = np.maximum(
+                waterfall[int(row)],
+                np.max(dbfs[selected], axis=0),
+            )
+    if not np.all(np.isfinite(waterfall)):
+        raise ValueError("shareable PNG raster contains an empty time bin")
+    spectrum = 10.0 * np.log10(
+        np.maximum(spectrum_power_sum / total_frames, 1e-20)
+    )
+    signal_top = max(
+        _histogram_percentile(histogram, 99.9),
+        float(np.percentile(spectrum, 99.5)),
+    )
+    dbfs_min, dbfs_max = _rounded_range(
+        _histogram_percentile(histogram, 10.0) - 3.0,
+        signal_top + 3.0,
+    )
+    frequency_lower, frequency_upper = _frequency_bounds_mhz(
+        recording,
+        effective_fft,
+    )
+    return (
+        np.linspace(
+            frequency_lower,
+            frequency_upper,
+            effective_fft + 1,
+        ),
+        np.linspace(0.0, recording.duration_seconds, row_count + 1),
+        waterfall,
+        spectrum,
+        dbfs_min,
+        dbfs_max,
+    )
+
+
+def render_recording_png(
+    recording: SigMFRecording,
+    target: str | Path,
+    *,
+    channel: int = 0,
+    fft_size: int = 256,
+    overlap_percent: int = 50,
+    colormap: str = "turbo",
+    time_bins: int = 1600,
+    width_pixels: int = 2400,
+    height_pixels: int = 1600,
+    cancel: Callable[[], None] | None = None,
+) -> Path:
+    """Render a fixed-size, full-recording PNG without skipping intervals."""
+    _validate_render_options(
+        fft_size=fft_size,
+        overlap_percent=overlap_percent,
+        max_native_cells=0,
+        colormap=colormap,
+    )
+    _validate_png_options(
+        time_bins=time_bins,
+        width_pixels=width_pixels,
+        height_pixels=height_pixels,
+    )
+    if not 0 <= channel < recording.channel_count:
+        raise ValueError("batch channel is outside the recording")
+    effective_fft, _, total_frames = _stft_geometry(
+        recording,
+        fft_size,
+        overlap_percent,
+    )
+    (
+        frequency_edges,
+        time_edges,
+        waterfall,
+        spectrum,
+        dbfs_min,
+        dbfs_max,
+    ) = _shareable_recording_summary(
+        recording,
+        channel=channel,
+        effective_fft=effective_fft,
+        total_frames=total_frames,
+        time_bins=time_bins,
+        cancel=cancel,
+    )
+    spectrum_min, spectrum_max = _rounded_range(
+        float(np.percentile(spectrum, 1.0)) - 3.0,
+        float(np.percentile(spectrum, 99.9)) + 3.0,
+    )
+    dpi = 160
+    figure = Figure(
+        figsize=(width_pixels / dpi, height_pixels / dpi),
+        dpi=dpi,
+        layout="constrained",
+        facecolor="#0d1d24",
+    )
+    FigureCanvasAgg(figure)
+    grid = figure.add_gridspec(
+        1,
+        3,
+        width_ratios=(0.10, 0.875, 0.025),
+        wspace=0.03,
+    )
+    spectrum_axes = figure.add_subplot(grid[0, 0])
+    waterfall_axes = figure.add_subplot(grid[0, 1], sharey=spectrum_axes)
+    colorbar_axes = figure.add_subplot(grid[0, 2])
+    axes = (spectrum_axes, waterfall_axes, colorbar_axes)
+    for axis in axes:
+        axis.set_facecolor("#10252d")
+        axis.tick_params(colors="#d8e7ea")
+        for spine in axis.spines.values():
+            spine.set_color("#54717a")
+    frequency_centers = (
+        frequency_edges[:-1] + frequency_edges[1:]
+    ) / 2.0
+    spectrum_axes.plot(
+        spectrum,
+        frequency_centers,
+        color="#50c8d3",
+        linewidth=0.9,
+    )
+    spectrum_axes.set_xlabel("dBFS", color="#e7f1f3")
+    spectrum_axes.set_ylabel("RF frequency (MHz)", color="#e7f1f3")
+    spectrum_axes.set_xlim(spectrum_min, spectrum_max)
+    spectrum_axes.grid(color="white", alpha=0.12, linewidth=0.45)
+    image = waterfall_axes.pcolormesh(
+        time_edges,
+        frequency_edges,
+        waterfall.T,
+        shading="flat",
+        cmap=colormap,
+        vmin=dbfs_min,
+        vmax=dbfs_max,
+        rasterized=True,
+    )
+    waterfall_axes.set_xlabel("Recording time (s)", color="#e7f1f3")
+    waterfall_axes.tick_params(labelleft=False)
+    waterfall_axes.grid(color="white", alpha=0.08, linewidth=0.35)
+    waterfall_axes.xaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+    waterfall_axes.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+    colorbar = figure.colorbar(image, cax=colorbar_axes)
+    colorbar.set_label("Power (dBFS)", color="#e7f1f3")
+    colorbar.outline.set_edgecolor("#54717a")
+    metadata = recording.metadata["global"]
+    title = str(
+        metadata.get("core:description")
+        or recording.metadata_path.name.removesuffix(".sigmf-meta")
+    )
+    if recording.channel_count > 1:
+        title = f"{title} · {recording.channel_labels[channel]}"
+    figure.suptitle(
+        (
+            f"{title}\n"
+            f"{recording.sample_rate / 1e6:g} MS/s · FFT {effective_fft} · "
+            f"{overlap_percent}% overlap · complete recording max-hold"
+        ),
+        x=0.07,
+        ha="left",
+        color="#e7f1f3",
+        fontsize=11,
+    )
+
+    destination = Path(target).expanduser().resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with NamedTemporaryFile(
+        dir=destination.parent,
+        prefix=f".{destination.name}.",
+        suffix=".png",
+        delete=False,
+    ) as stream:
+        temporary = Path(stream.name)
+    try:
+        if cancel is not None:
+            cancel()
+        figure.savefig(
+            temporary,
+            format="png",
+            dpi=dpi,
+            facecolor=figure.get_facecolor(),
+            metadata={
+                "Title": title,
+                "Description": (
+                    "Complete recording; every centered STFT frame contributes "
+                    "to a bounded time bin using power-domain max-hold."
+                ),
+            },
+        )
+        if cancel is not None:
+            cancel()
+        temporary.replace(destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+        figure.clear()
+    return destination
+
+
 def _save_tile(image: Image.Image, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     image.save(
@@ -459,7 +725,7 @@ _VIEWER_HTML = """<!doctype html>
 body{display:grid;grid-template-rows:auto minmax(0,1fr)}
 header{display:flex;align-items:center;gap:18px;min-height:58px;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
 .title{min-width:0;flex:1}.title h1{overflow:hidden;margin:0;font-size:15px;text-overflow:ellipsis;white-space:nowrap}.title p{overflow:hidden;margin:3px 0 0;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap}
-.controls{display:flex;align-items:center;gap:6px}.controls button{min-height:30px;padding:5px 9px;border:1px solid var(--line);border-radius:5px;color:var(--ink);background:#183640;font:600 11px system-ui;cursor:pointer}.controls button:hover{border-color:var(--accent);color:var(--accent)}
+.controls{display:flex;align-items:center;gap:6px}.controls button,.controls a{min-height:30px;padding:5px 9px;border:1px solid var(--line);border-radius:5px;color:var(--ink);background:#183640;font:600 11px system-ui;text-decoration:none;cursor:pointer}.controls button:hover,.controls a:hover{border-color:var(--accent);color:var(--accent)}
 #plot{position:relative;min-width:0;min-height:0}
 #stage{position:absolute;inset:12px 116px 55px 82px;overflow:hidden;border:1px solid var(--line);background:#07161c;cursor:grab;touch-action:none}
 #stage.dragging{cursor:grabbing}#waterfall{display:block;width:100%;height:100%}
@@ -476,6 +742,7 @@ header{display:flex;align-items:center;gap:18px;min-height:58px;padding:9px 14px
 <header>
   <div class="title"><h1 id="title"></h1><p id="subtitle"></p></div>
   <div class="controls">
+    <a id="png" hidden target="_blank" rel="noopener">Full PNG</a>
     <button id="full" type="button">Full recording</button>
     <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
     <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
@@ -499,6 +766,7 @@ const stage=document.querySelector('#stage'),canvas=document.querySelector('#wat
 const cache=new Map(),cacheLimit=96;let left=0,span=config.width,drag=null,drawQueued=false;
 document.querySelector('#title').textContent=config.title;
 document.querySelector('#subtitle').textContent=config.subtitle;
+if(config.shareablePng){const png=document.querySelector('#png');png.href=config.shareablePng;png.hidden=false}
 function clampView(){span=Math.max(1,Math.min(config.width,span));left=Math.max(0,Math.min(config.width-span,left))}
 function levelForView(){const px=stage.clientWidth/span;if(px>=1)return config.maxLevel;const reduction=Math.max(0,Math.round(Math.log2(1/px)));return Math.max(0,config.maxLevel-reduction)}
 function requestDraw(){if(drawQueued)return;drawQueued=true;requestAnimationFrame(()=>{drawQueued=false;draw()})}
@@ -550,6 +818,7 @@ def render_recording_viewer(
     overlap_percent: int = 50,
     colormap: str = "turbo",
     max_native_cells: int = 75_000_000,
+    shareable_png: str | None = None,
     cancel: Callable[[], None] | None = None,
 ) -> tuple[Path, tuple[Path, ...]]:
     """Render a bounded tiled viewer with exact cells at maximum zoom."""
@@ -660,6 +929,7 @@ def render_recording_viewer(
             "tileSize": _TILE_SIZE,
             "maxLevel": max_level,
             "nativeCells": native_cells,
+            "shareablePng": shareable_png,
         }
         (temporary_assets / "metadata.json").write_text(
             json.dumps(configuration, indent=2) + "\n",
@@ -720,18 +990,18 @@ def render_recording_viewer(
 
 
 class SigMFWaterfallBatch(Batch[SigMFSource]):
-    """Durable per-recording and whole-workspace tiled waterfall viewers."""
+    """Durable whole-recording PNGs and exact tiled waterfall viewers."""
 
     item_actions = (
         CapabilityChoice(
             RENDER_WATERFALL,
-            "Render full-resolution waterfall viewer",
+            "Render full-recording PNG and tiled viewer",
         ),
     )
     workspace_actions = (
         CapabilityChoice(
             RENDER_WATERFALL,
-            "Render all full-resolution waterfall viewers",
+            "Render all full-recording PNGs and tiled viewers",
         ),
     )
 
@@ -743,6 +1013,9 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
         overlap_percent: int = 50,
         colormap: str = "turbo",
         max_native_cells: int = 75_000_000,
+        png_time_bins: int = 1600,
+        png_width_pixels: int = 2400,
+        png_height_pixels: int = 1600,
     ) -> None:
         _validate_render_options(
             fft_size=fft_size,
@@ -750,11 +1023,19 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
             max_native_cells=max_native_cells,
             colormap=colormap,
         )
+        _validate_png_options(
+            time_bins=png_time_bins,
+            width_pixels=png_width_pixels,
+            height_pixels=png_height_pixels,
+        )
         self.output_root = Path(output_root).expanduser().resolve()
         self.fft_size = fft_size
         self.overlap_percent = overlap_percent
         self.colormap = colormap
         self.max_native_cells = max_native_cells
+        self.png_time_bins = png_time_bins
+        self.png_width_pixels = png_width_pixels
+        self.png_height_pixels = png_height_pixels
 
     @staticmethod
     def _slug(value: str) -> str:
@@ -764,7 +1045,7 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
             value.lower(),
         ).strip("-")
 
-    def _filename(
+    def _filename_stem(
         self,
         resource: DataResource,
         recording: SigMFRecording,
@@ -782,12 +1063,44 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
         return (
             f"{slug}-{channel_slug}-waterfall-"
             f"fft{self.fft_size}-{self.overlap_percent}pct-"
-            f"{self._slug(self.colormap)}-tiled.html"
+            f"{self._slug(self.colormap)}"
         )
+
+    def _filename(
+        self,
+        resource: DataResource,
+        recording: SigMFRecording,
+        channel: int,
+        *,
+        collection: SigMFCollection | None,
+        kind: str,
+    ) -> str:
+        stem = self._filename_stem(
+            resource,
+            recording,
+            channel,
+            collection=collection,
+        )
+        if kind == "png":
+            return f"{stem}-{self.png_width_pixels}x{self.png_height_pixels}.png"
+        if kind == "viewer":
+            return f"{stem}-tiled.html"
+        raise ValueError(f"unknown waterfall output kind: {kind}")
 
     @staticmethod
     def _recordings(source: SigMFSource) -> tuple[SigMFRecording, ...]:
         return source.members if isinstance(source, SigMFCollection) else (source,)
+
+    def _supports_tiled_viewer(self, recording: SigMFRecording) -> bool:
+        effective_fft, _, total_frames = _stft_geometry(
+            recording,
+            self.fft_size,
+            self.overlap_percent,
+        )
+        return (
+            self.max_native_cells == 0
+            or total_frames * effective_fft <= self.max_native_cells
+        )
 
     def _filenames(
         self,
@@ -796,16 +1109,29 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
     ) -> tuple[str, ...]:
         opened = open_source(resource.source) if source is None else source
         collection = opened if isinstance(opened, SigMFCollection) else None
-        return tuple(
-            self._filename(
-                resource,
-                recording,
-                channel,
-                collection=collection,
-            )
-            for recording in self._recordings(opened)
-            for channel in range(recording.channel_count)
-        )
+        filenames = []
+        for recording in self._recordings(opened):
+            for channel in range(recording.channel_count):
+                filenames.append(
+                    self._filename(
+                        resource,
+                        recording,
+                        channel,
+                        collection=collection,
+                        kind="png",
+                    )
+                )
+                if self._supports_tiled_viewer(recording):
+                    filenames.append(
+                        self._filename(
+                            resource,
+                            recording,
+                            channel,
+                            collection=collection,
+                            kind="viewer",
+                        )
+                    )
+        return tuple(filenames)
 
     def item_destination(
         self,
@@ -815,7 +1141,7 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
         return BatchDestination(
             self.output_root,
             self._filenames(resource),
-            "Full-resolution waterfall viewers are ready",
+            "Full-recording waterfall results are ready",
         )
 
     def workspace_destination(
@@ -830,7 +1156,7 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
                 for resource in resources
                 for filename in self._filenames(resource)
             ),
-            "All full-resolution waterfall viewers are ready",
+            "All full-recording waterfall results are ready",
         )
 
     def _render(
@@ -845,7 +1171,7 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
         assets = []
         for recording in self._recordings(source):
             for channel in range(recording.channel_count):
-                target, support = render_recording_viewer(
+                png_target = render_recording_png(
                     recording,
                     directory
                     / self._filename(
@@ -853,16 +1179,39 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
                         recording,
                         channel,
                         collection=collection,
+                        kind="png",
                     ),
                     channel=channel,
                     fft_size=self.fft_size,
                     overlap_percent=self.overlap_percent,
                     colormap=self.colormap,
-                    max_native_cells=self.max_native_cells,
+                    time_bins=self.png_time_bins,
+                    width_pixels=self.png_width_pixels,
+                    height_pixels=self.png_height_pixels,
                     cancel=request.raise_if_cancelled,
                 )
-                files.append(target)
-                assets.extend(support)
+                files.append(png_target)
+                if self._supports_tiled_viewer(recording):
+                    target, support = render_recording_viewer(
+                        recording,
+                        directory
+                        / self._filename(
+                            resource,
+                            recording,
+                            channel,
+                            collection=collection,
+                            kind="viewer",
+                        ),
+                        channel=channel,
+                        fft_size=self.fft_size,
+                        overlap_percent=self.overlap_percent,
+                        colormap=self.colormap,
+                        max_native_cells=self.max_native_cells,
+                        shareable_png=png_target.name,
+                        cancel=request.raise_if_cancelled,
+                    )
+                    files.append(target)
+                    assets.extend(support)
         return tuple(files), tuple(assets)
 
     def run_item(
@@ -880,7 +1229,7 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
         )
         return BatchResult(
             files,
-            f"Rendered {len(files)} full-resolution waterfall viewer(s)",
+            f"Rendered {len(files)} full-recording waterfall output(s)",
             assets,
         )
 
@@ -912,7 +1261,7 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
         )
         return BatchResult(
             files,
-            f"Rendered {len(files)} full-resolution waterfall viewer(s)",
+            f"Rendered {len(files)} full-recording waterfall output(s)",
             assets,
         )
 
@@ -920,5 +1269,6 @@ class SigMFWaterfallBatch(Batch[SigMFSource]):
 __all__ = [
     "RENDER_WATERFALL",
     "SigMFWaterfallBatch",
+    "render_recording_png",
     "render_recording_viewer",
 ]

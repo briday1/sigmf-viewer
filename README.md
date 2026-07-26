@@ -46,19 +46,33 @@ directly on the waterfall.
 
 ### Durable batch output
 
-Batch mode renders a tiled, zoomable time–frequency viewer for an entire
-recording without starting the interactive server. It opens at a readable
-whole-recording view with time/frequency axes and a dBFS colorbar. Zooming
-progressively selects finer tiles until every STFT frame and FFT bin maps to an
-exact native pixel. Dragging or a two-finger horizontal touchpad gesture scrubs
-through time; Shift+scroll provides the same pan on a conventional wheel. The
-color scale is discovered independently for each recording with the same
+Batch mode renders two complementary results for an entire recording without
+starting the interactive server:
+
+- a fixed 2400×1600 PNG for sharing, with the complete recording, the average
+  spectrum on the left, and a dBFS colorbar; and
+- a tiled HTML viewer for exact inspection of recordings that fit the
+  configured native-cell limit.
+
+Every STFT frame contributes to the PNG. When the recording contains more
+time frames than PNG columns, the renderer uses max-hold within each column so
+short events are retained rather than skipped. The HTML opens at a readable
+whole-recording view and progressively selects finer tiles until every STFT
+frame and FFT bin maps to an exact native pixel. Dragging or a two-finger
+horizontal touchpad gesture scrubs through time; Shift+scroll provides the
+same pan on a conventional wheel. Its **Full PNG** control switches to the
+matching shareable image. Sigvue's results browser lists both representations
+and previews the PNG directly.
+
+The color scale is discovered independently for each recording with the same
 robust percentile and 5 dB rounding rule used by the interactive waterfall.
 
+![Shareable full-recording LTE waterfall PNG](figures/batch-lte-uplink-waterfall.png)
+
 Actions can run for one catalog row or the whole workspace; collections expand
-across every member and channel. Rendering is chunked and writes one HTML entry
-point plus bounded PNG tiles under `outputs/`, allowing Sigvue to recognize
-completed work after a restart without constructing a gigantic single image.
+across every member and channel. Rendering is chunked and writes the PNG, HTML
+entry point, and bounded HTML tiles under `outputs/`, allowing Sigvue to
+recognize completed work after a restart.
 
 ```text
 src/sigmf_viewer/
@@ -69,7 +83,7 @@ src/sigmf_viewer/
 ├── plots.py       pure Plotly waterfall figure construction
 ├── view.py        controls, statistics, tabs, and layout
 ├── annotations.py standard SigMF annotation discovery and persistence
-├── batch.py       durable tiled whole-recording waterfall viewers
+├── batch.py       shareable PNG and tiled whole-recording outputs
 ├── workspace.py   one reader + one view callback + one workspace
 ├── cli.py         application-specific browser command
 └── runtime.py     durable data/output roots and generated profiles
@@ -195,25 +209,29 @@ workspace configuration control that summary without changing the 30 px bar.
 
 ## Batch rendering
 
-Each catalog row has a **Render full-resolution waterfall viewer** action. A
-standalone recording produces one HTML viewer per channel. A collection action
-renders every member and every channel. The workspace action renders all
-catalog items. Deterministic results live under `outputs/`, so completed
-outputs are recognized after restart.
+Each catalog row has a **Render full-recording PNG and tiled viewer** action.
+A standalone recording produces one PNG and, where practical, one HTML viewer
+per channel. A collection action renders every member and every channel. The
+workspace action renders all catalog items. Deterministic results live under
+`outputs/`, so completed outputs are recognized after restart and can be
+regenerated explicitly.
 
-The batch output intentionally omits the interactive average-spectrum strip.
-Coarser levels use dBFS max-hold summaries so narrow events remain visible
+The PNG is always produced. Its complete-duration heatmap and left-side
+average spectrum use fixed dimensions controlled by `batch_png_time_bins`,
+`batch_png_width_pixels`, and `batch_png_height_pixels`. The tiled HTML omits
+the spectrum strip to devote its full canvas to exact waterfall inspection.
+Coarser HTML levels use dBFS max-hold summaries so narrow events remain visible
 while zoomed out; maximum zoom loads the native, unaggregated STFT cells.
-`batch_colormap` controls the tiles.
+`batch_colormap` controls both representations.
 `batch_max_native_cells` prevents an accidental multi-gigabyte render
 (75 million by default). The included LTE captures fit under that bound.
 A minute at tens of MS/s does not: materializing every STFT cell into one
-portable image or tile set would contain billions of cells. Use the
-interactive windowed viewer for recordings of that scale. It keeps the full
-recording available, computes the exact source data for the visible interval,
-and rerenders at native resolution as you zoom. Set the batch limit to `0`
-only when an unbounded portable export is deliberate. The dBFS range is
-always discovered per recording.
+portable tile set would contain billions of cells. Such a recording still
+gets its complete-duration PNG; use the interactive windowed viewer for exact
+inspection. It keeps the full recording available, computes the exact source
+data for the visible interval, and rerenders at native resolution as you zoom.
+Set the batch limit to `0` only when an unbounded portable HTML export is
+deliberate. The dBFS range is always discovered per recording.
 
 Batch actions also run without starting the server:
 

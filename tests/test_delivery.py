@@ -45,6 +45,15 @@ def test_runtime_profile_uses_explicit_paths_and_flat_discovery():
             payload["workspaces"][0]["config"]["batch_max_native_cells"]
             == 75_000_000
         )
+        assert payload["workspaces"][0]["config"]["batch_png_time_bins"] == 1600
+        assert (
+            payload["workspaces"][0]["config"]["batch_png_width_pixels"]
+            == 2400
+        )
+        assert (
+            payload["workspaces"][0]["config"]["batch_png_height_pixels"]
+            == 1600
+        )
         assert output.is_dir()
         assert not profile_path.exists()
 
