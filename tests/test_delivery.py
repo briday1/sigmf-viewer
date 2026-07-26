@@ -4,9 +4,7 @@ import json
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from types import SimpleNamespace
 from unittest.mock import patch
-from urllib.request import urlopen
 
 try:
     import tomllib
@@ -16,38 +14,8 @@ except ModuleNotFoundError:  # pragma: no cover
 from sigvue.profile import load_browser_profile
 
 from scripts.download_data import download_datasets
-from sigmf_viewer import cli, desktop
+from sigmf_viewer import cli
 from sigmf_viewer.runtime import runtime_profile
-
-
-class FakeEvent:
-    def __init__(self):
-        self.handlers = []
-
-    def __iadd__(self, handler):
-        self.handlers.append(handler)
-        return self
-
-
-class FakeWindow:
-    def __init__(self):
-        self.events = SimpleNamespace(
-            loaded=FakeEvent(),
-            restored=FakeEvent(),
-        )
-        self.scripts = []
-        self.fullscreen_toggles = 0
-        self.selected_directory = "/tmp/sigmf-data"
-
-    def evaluate_js(self, script):
-        self.scripts.append(script)
-
-    def toggle_fullscreen(self):
-        self.fullscreen_toggles += 1
-
-    def create_file_dialog(self, dialog_type):
-        self.dialog_type = dialog_type
-        return (self.selected_directory,)
 
 
 def test_runtime_profile_uses_explicit_paths_and_flat_discovery():
@@ -116,67 +84,6 @@ def test_cli_accepts_one_recording_and_preserves_sigvue_arguments():
         assert Path(workspace.configuration["data_root"]) == (recording.resolve())
 
 
-def test_desktop_hosts_live_private_server_and_native_fullscreen():
-    with TemporaryDirectory() as directory:
-        root = Path(directory)
-        result = {}
-        window = FakeWindow()
-
-        def create_window(title, url, **options):
-            result.update(title=title, url=url, options=options)
-            return window
-
-        def start(**options):
-            with urlopen(f"{result['url']}/health", timeout=5) as response:
-                result["health"] = json.load(response)
-            for handler in window.events.loaded.handlers:
-                handler(window)
-            result["start_options"] = options
-
-        fake_webview = SimpleNamespace(
-            FileDialog=SimpleNamespace(FOLDER=20),
-            create_window=create_window,
-            start=start,
-        )
-        with (
-            patch.dict(sys.modules, {"webview": fake_webview}),
-            patch.object(
-                sys,
-                "argv",
-                [
-                    "sigmf-viewer-desktop",
-                    "--data-root",
-                    str(root / "data"),
-                    "--output-root",
-                    str(root / "outputs"),
-                    "--width",
-                    "1200",
-                    "--height",
-                    "700",
-                ],
-            ),
-        ):
-            desktop.main()
-
-        assert result["title"] == "SigMF Viewer"
-        assert result["url"].startswith("http://127.0.0.1:")
-        assert result["health"] == {"status": "ok"}
-        assert result["options"]["width"] == 1200
-        assert result["options"]["height"] == 700
-        bridge = result["options"]["js_api"]
-        assert bridge.choose_directory() == "/tmp/sigmf-data"
-        assert bridge.toggle_fullscreen() is True
-        for handler in window.events.restored.handlers:
-            handler()
-        assert bridge.fullscreen_state() is False
-        assert window.fullscreen_toggles == 1
-        assert len(window.scripts) == 2
-        assert "#fullscreen-toggle" in window.scripts[0]
-        assert "stopImmediatePropagation" in window.scripts[0]
-        assert window.scripts[1] == ("window.__sigmfViewerSetNativeFullscreen?.(false)")
-        assert result["start_options"] == {"debug": False}
-
-
 def test_downloader_writes_standard_collection(tmp_path):
     def fake_download(remote, destination, **options):
         del options
@@ -200,15 +107,15 @@ def test_downloader_writes_standard_collection(tmp_path):
     assert streams[1]["name"].startswith("uplink/")
 
 
-def test_package_declares_all_delivery_entry_points_and_dependencies():
+def test_package_leaves_delivery_to_sigvue():
     project = Path(__file__).resolve().parents[1]
     payload = tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))
     scripts = payload["project"]["scripts"]
 
     assert payload["project"]["name"] == "sigmf-viewer"
     assert scripts["sigmf-viewer"] == "sigmf_viewer.cli:main"
-    assert scripts["sigmf-viewer-desktop"] == "sigmf_viewer.desktop:main"
-    assert scripts["sigmf-viewer-build"] == "sigmf_viewer._packaging.build:main"
+    assert "sigmf-viewer-desktop" not in scripts
+    assert "sigmf-viewer-build" not in scripts
     dependencies = {
         requirement.split(">=", 1)[0]
         for requirement in payload["project"]["dependencies"]
@@ -219,12 +126,13 @@ def test_package_declares_all_delivery_entry_points_and_dependencies():
         "plotly",
         "sigvue",
     } == dependencies
-    assert {"pyinstaller", "pywebview"} == {
-        requirement.split(">=", 1)[0]
-        for requirement in payload["project"]["optional-dependencies"]["desktop"]
-    }
-    assert (
+    assert "desktop" not in payload["project"]["optional-dependencies"]
+    assert not (project / "src" / "sigmf_viewer" / "desktop.py").exists()
+    assert not (
+        project / "src" / "sigmf_viewer" / "_packaging" / "build.py"
+    ).exists()
+    assert not (
         project / "src" / "sigmf_viewer" / "_packaging" / "sigmf_viewer.spec"
-    ).is_file()
+    ).exists()
     assert "sigmf-viewer-download" not in scripts
     assert not (project / "src" / "sigmf_viewer" / "download.py").exists()

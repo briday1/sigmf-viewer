@@ -1,10 +1,9 @@
-"""Runtime paths and generated profiles for browser and desktop delivery."""
+"""Runtime paths and generated profiles for the focused CLI."""
 
 from __future__ import annotations
 
 import json
 import os
-import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -13,61 +12,28 @@ from tempfile import TemporaryDirectory
 APPLICATION_NAME = "SigMF Viewer"
 
 
-def application_data_root() -> Path:
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / APPLICATION_NAME
-    if os.name == "nt":
-        base = Path(
-            os.environ.get(
-                "LOCALAPPDATA",
-                Path.home() / "AppData" / "Local",
-            )
-        )
-        return base / APPLICATION_NAME
-    base = Path(
-        os.environ.get(
-            "XDG_DATA_HOME",
-            Path.home() / ".local" / "share",
-        )
-    )
-    return base / "sigmf-viewer"
-
-
 def _source_checkout_root() -> Path | None:
     candidate = Path(__file__).resolve().parents[2]
     return candidate if (candidate / "browser.toml").is_file() else None
 
 
-def _bundled_data_root() -> Path | None:
-    bundle = getattr(sys, "_MEIPASS", None)
-    if not bundle:
-        return None
-    candidate = Path(bundle) / "data"
-    return candidate if candidate.is_dir() else None
-
-
-def default_data_root(*, desktop: bool = False) -> Path:
+def default_data_root() -> Path:
     configured = os.environ.get("SIGMF_VIEWER_DATA_ROOT")
     if configured:
         return Path(configured).expanduser().resolve()
-    bundled = _bundled_data_root()
-    if bundled is not None:
-        return bundled
     working = Path.cwd() / "data"
     if working.is_dir():
         return working.resolve()
     checkout = _source_checkout_root()
     if checkout is not None:
         return (checkout / "data").resolve()
-    return application_data_root() / "data" if desktop else working.resolve()
+    return working.resolve()
 
 
-def default_output_root(*, desktop: bool = False) -> Path:
+def default_output_root() -> Path:
     configured = os.environ.get("SIGMF_VIEWER_OUTPUT_ROOT")
     if configured:
         return Path(configured).expanduser().resolve()
-    if desktop or getattr(sys, "frozen", False):
-        return application_data_root() / "outputs"
     checkout = _source_checkout_root()
     if checkout is not None:
         return (checkout / "outputs").resolve()
@@ -112,15 +78,14 @@ def runtime_profile(
     *,
     data_root: str | Path | None = None,
     output_root: str | Path | None = None,
-    desktop: bool = False,
 ) -> Iterator[Path]:
     resolved_data = (
-        default_data_root(desktop=desktop)
+        default_data_root()
         if data_root is None
         else Path(data_root).expanduser().resolve()
     )
     resolved_output = (
-        default_output_root(desktop=desktop)
+        default_output_root()
         if output_root is None
         else Path(output_root).expanduser().resolve()
     )
@@ -136,7 +101,6 @@ def runtime_profile(
 
 __all__ = [
     "APPLICATION_NAME",
-    "application_data_root",
     "default_data_root",
     "default_output_root",
     "profile_text",

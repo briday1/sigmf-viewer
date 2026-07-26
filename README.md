@@ -70,9 +70,7 @@ src/sigmf_viewer/
 ├── batch.py       durable high-resolution whole-recording PNGs
 ├── workspace.py   one reader + one view callback + one workspace
 ├── cli.py         application-specific browser command
-├── desktop.py     native pywebview window and server lifetime
-├── runtime.py     durable data/output roots and generated profiles
-└── _packaging/    installed PyInstaller build support
+└── runtime.py     durable data/output roots and generated profiles
 
 scripts/
 └── download_data.py   repository-only example-data downloader
@@ -80,11 +78,12 @@ scripts/
 
 ## Install and download
 
-Install the viewer with native desktop support, then download the example
+Install the viewer and Sigvue's shared desktop host, then download the example
 recordings:
 
 ```bash
-python -m pip install -e ".[desktop]"
+python -m pip install -e .
+python -m pip install "sigvue[desktop]"
 python scripts/download_data.py
 ```
 
@@ -110,15 +109,15 @@ the installed package, wheel, and console entry points.
 
 ## Run
 
-Open the viewer as a native desktop application:
+Open the repository profile in Sigvue's native desktop host:
 
 ```bash
-sigmf-viewer-desktop
+sigvue-desktop --config browser.toml
 ```
 
-The desktop launcher hosts the same Sigvue interface in a pywebview window,
-including the framework fullscreen control, native folder selection, windowed
-scrubbing, annotations, and batch actions.
+The shared host provides the same Sigvue interface in a pywebview window,
+including native fullscreen and folder selection. This workspace package only
+defines SigMF discovery, buffering, views, annotations, and batch actions.
 
 To use an ordinary browser instead:
 
@@ -263,26 +262,12 @@ window = reader.read(source, start=0.0, stop=0.012)
 For a collection, pass the member's manifest-relative metadata path through
 the optional `member=` keyword.
 
-## Native desktop application
+## Desktop delivery
 
-```bash
-sigmf-viewer-build
-```
-
-The desktop extra installed during setup includes both pywebview and
-PyInstaller. On macOS the build produces `dist/SigMF Viewer.app`; Windows and
-Linux produce a platform-specific `dist/sigmf-viewer` executable.
-When `data/` exists, the default build embeds it. Build a smaller application
-that uses external recordings with:
-
-```bash
-sigmf-viewer-build --without-data
-sigmf-viewer-desktop --data-root /path/to/sigmf
-```
-
-The frozen app writes batch PNGs to the operating system's application data
-location, never into the bundle. Sigvue's fullscreen control toggles the
-native window in desktop mode and browser fullscreen otherwise.
+Desktop delivery belongs to Sigvue rather than this workspace package.
+`sigvue-desktop` loads the normal profile, so the interactive and batch
+pipelines remain independently reusable and no SigMF-specific desktop
+executable is installed.
 
 ## Test and package
 
