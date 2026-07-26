@@ -526,6 +526,9 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
     assert "event.shiftKey" in html
     assert "Full PNG" in html
     assert '"shareablePng":"short.png"' in html
+    assert ".title{min-width:0;flex:1;overflow:hidden}" in html
+    assert ".controls{display:flex;flex:none;" in html
+    assert "document.querySelector('#title').title=config.title" in html
     metadata_path = next(path for path in assets if path.name == "metadata.json")
     metadata_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
     discovered_min = metadata_payload["dbfsMin"]

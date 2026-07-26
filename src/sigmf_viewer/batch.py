@@ -723,9 +723,9 @@ _VIEWER_HTML = """<!doctype html>
 :root{color-scheme:dark;--bg:#0d1d24;--panel:#132a34;--ink:#e7f1f3;--muted:#9eb5bc;--line:#31505b;--accent:#50c8d3}
 *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--ink);font:13px system-ui,sans-serif}
 body{display:grid;grid-template-rows:auto minmax(0,1fr)}
-header{display:flex;align-items:center;gap:18px;min-height:58px;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
-.title{min-width:0;flex:1}.title h1{overflow:hidden;margin:0;font-size:15px;text-overflow:ellipsis;white-space:nowrap}.title p{overflow:hidden;margin:3px 0 0;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap}
-.controls{display:flex;align-items:center;gap:6px}.controls button,.controls a{min-height:30px;padding:5px 9px;border:1px solid var(--line);border-radius:5px;color:var(--ink);background:#183640;font:600 11px system-ui;text-decoration:none;cursor:pointer}.controls button:hover,.controls a:hover{border-color:var(--accent);color:var(--accent)}
+header{display:flex;min-width:0;align-items:center;gap:18px;min-height:58px;overflow:hidden;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+.title{min-width:0;flex:1;overflow:hidden}.title h1{display:block;overflow:hidden;margin:0;font-size:15px;text-overflow:ellipsis;white-space:nowrap}.title p{display:block;overflow:hidden;margin:3px 0 0;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.controls{display:flex;flex:none;align-items:center;gap:6px;white-space:nowrap}.controls button,.controls a{flex:none;min-height:30px;padding:5px 9px;border:1px solid var(--line);border-radius:5px;color:var(--ink);background:#183640;font:600 11px system-ui;text-decoration:none;cursor:pointer}.controls button:hover,.controls a:hover{border-color:var(--accent);color:var(--accent)}
 #plot{position:relative;min-width:0;min-height:0}
 #stage{position:absolute;inset:12px 116px 55px 82px;overflow:hidden;border:1px solid var(--line);background:#07161c;cursor:grab;touch-action:none}
 #stage.dragging{cursor:grabbing}#waterfall{display:block;width:100%;height:100%}
@@ -765,6 +765,7 @@ const config=__CONFIG__;
 const stage=document.querySelector('#stage'),canvas=document.querySelector('#waterfall'),context=canvas.getContext('2d');
 const cache=new Map(),cacheLimit=96;let left=0,span=config.width,drag=null,drawQueued=false;
 document.querySelector('#title').textContent=config.title;
+document.querySelector('#title').title=config.title;
 document.querySelector('#subtitle').textContent=config.subtitle;
 if(config.shareablePng){const png=document.querySelector('#png');png.href=config.shareablePng;png.hidden=false}
 function clampView(){span=Math.max(1,Math.min(config.width,span));left=Math.max(0,Math.min(config.width-span,left))}
