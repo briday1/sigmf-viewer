@@ -76,6 +76,11 @@ across every member and channel. Rendering is chunked and writes the PNG, HTML
 entry point, and bounded HTML tiles under `outputs/`, allowing Sigvue to
 recognize completed work after a restart.
 
+The persistent **Browse** menu opens either **All batch results** or the
+full-recording render collection for the selected row or workspace, rather
+than only the most recent job. Job notifications continue to link to the exact
+run that produced them.
+
 ```text
 src/sigmf_viewer/
 ├── sigmf.py       format validation, collections, and exact ranged sample I/O
