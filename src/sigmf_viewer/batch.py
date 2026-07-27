@@ -592,20 +592,29 @@ def _render_native_tiles(
                 )
             finally:
                 tile.close()
-            scalar_tile = Image.fromarray(
-                scalar_pixels[
+            scalar_tile = np.power(
+                10.0,
+                dbfs[
+                    :,
+                    ::-1,
+                ].T[
                     first_row : first_row + _TILE_SIZE,
                     :,
-                ],
-                mode="L",
+                ]
+                / 10.0,
+                dtype=np.float64,
+            ).astype(
+                np.float32,
             )
-            try:
-                _save_tile(
-                    scalar_tile,
-                    scalar_level_directory / f"{tile_x}_{tile_y}.png",
-                )
-            finally:
-                scalar_tile.close()
+            scalar_path = (
+                scalar_level_directory / f"{tile_x}_{tile_y}.npy"
+            )
+            scalar_path.parent.mkdir(parents=True, exist_ok=True)
+            np.save(
+                scalar_path,
+                scalar_tile,
+                allow_pickle=False,
+            )
 
 
 def _build_time_pyramid(
@@ -616,9 +625,13 @@ def _build_time_pyramid(
     directory: Path,
     scalar_directory: Path,
     color_lut: np.ndarray,
+    dbfs_min: float,
+    dbfs_max: float,
     cancel: Callable[[], None] | None = None,
 ) -> None:
+    """Build exact count-weighted linear-power means at every coarse level."""
     child_width = native_width
+    child_group_size = 1
     vertical_tiles = ceil(native_height / _TILE_SIZE)
     for child_level in range(max_level, 0, -1):
         if cancel is not None:
@@ -639,65 +652,90 @@ def _build_time_pyramid(
                     _TILE_SIZE,
                     native_height - tile_y * _TILE_SIZE,
                 )
-                canvas = Image.new(
-                    "L",
-                    (region_width, region_height),
-                    0,
+                source = np.zeros(
+                    (region_height, region_width),
+                    dtype=np.float32,
+                )
+                for child_offset in range(2):
+                    child_x = tile_x * 2 + child_offset
+                    child_path = (
+                        scalar_directory
+                        / str(child_level)
+                        / f"{child_x}_{tile_y}.npy"
+                    )
+                    if not child_path.is_file():
+                        continue
+                    child = np.load(
+                        child_path,
+                        allow_pickle=False,
+                    )
+                    offset = child_offset * _TILE_SIZE
+                    source[
+                        : child.shape[0],
+                        offset : offset + child.shape[1],
+                    ] = child
+                child_columns = np.arange(
+                    child_start,
+                    child_start + region_width,
+                    dtype=np.int64,
+                )
+                child_counts = np.minimum(
+                    child_group_size,
+                    native_width
+                    - child_columns * child_group_size,
+                ).astype(np.float64)
+                even = source[:, 0::2].astype(np.float64)
+                even_counts = child_counts[0::2]
+                odd_source = source[:, 1::2]
+                odd = np.zeros_like(even)
+                odd[:, : odd_source.shape[1]] = odd_source
+                odd_counts_source = child_counts[1::2]
+                odd_counts = np.zeros_like(even_counts)
+                odd_counts[: odd_counts_source.size] = odd_counts_source
+                parent_counts = even_counts + odd_counts
+                parent_power = (
+                    even * even_counts[None, :]
+                    + odd * odd_counts[None, :]
+                ) / parent_counts[None, :]
+                parent_power = parent_power.astype(np.float32)
+                parent_scalar_path = (
+                    scalar_directory
+                    / str(parent_level)
+                    / f"{tile_x}_{tile_y}.npy"
+                )
+                parent_scalar_path.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+                np.save(
+                    parent_scalar_path,
+                    parent_power,
+                    allow_pickle=False,
+                )
+                parent_dbfs = 10.0 * np.log10(
+                    np.maximum(parent_power, 1e-20)
+                )
+                parent_indexes = _color_indexes(
+                    parent_dbfs,
+                    dbfs_min=dbfs_min,
+                    dbfs_max=dbfs_max,
+                )
+                parent_color = Image.fromarray(
+                    color_lut[parent_indexes],
+                    mode="RGB",
                 )
                 try:
-                    for child_offset in range(2):
-                        child_x = tile_x * 2 + child_offset
-                        child_path = (
-                            scalar_directory
-                            / str(child_level)
-                            / f"{child_x}_{tile_y}.png"
-                        )
-                        if not child_path.is_file():
-                            continue
-                        child = Image.open(child_path)
-                        try:
-                            canvas.paste(
-                                child,
-                                (child_offset * _TILE_SIZE, 0),
-                            )
-                        finally:
-                            child.close()
-                    source = np.asarray(canvas, dtype=np.uint8)
-                    even = source[:, 0::2]
-                    odd_source = source[:, 1::2]
-                    odd = np.zeros_like(even)
-                    odd[:, : odd_source.shape[1]] = odd_source
-                    parent_indexes = np.maximum(even, odd)
-                    parent_scalar = Image.fromarray(
-                        parent_indexes,
-                        mode="L",
+                    _save_tile(
+                        parent_color,
+                        directory
+                        / str(parent_level)
+                        / f"{tile_x}_{tile_y}.png",
                     )
-                    try:
-                        _save_tile(
-                            parent_scalar,
-                            scalar_directory
-                            / str(parent_level)
-                            / f"{tile_x}_{tile_y}.png",
-                        )
-                    finally:
-                        parent_scalar.close()
-                    parent_color = Image.fromarray(
-                        color_lut[parent_indexes],
-                        mode="RGB",
-                    )
-                    try:
-                        _save_tile(
-                            parent_color,
-                            directory
-                            / str(parent_level)
-                            / f"{tile_x}_{tile_y}.png",
-                        )
-                    finally:
-                        parent_color.close()
                 finally:
-                    canvas.close()
+                    parent_color.close()
         shutil.rmtree(scalar_directory / str(child_level))
         child_width = parent_width
+        child_group_size *= 2
 
 
 def _colormap_gradient(colormap: str) -> str:
@@ -773,7 +811,7 @@ function levelForView(){const px=stage.clientWidth/span;if(px>=1)return config.m
 function requestDraw(){if(drawQueued)return;drawQueued=true;requestAnimationFrame(()=>{drawQueued=false;draw()})}
 function tile(level,x,y){const key=`${level}/${x}_${y}`;if(cache.has(key)){const hit=cache.get(key);cache.delete(key);cache.set(key,hit);return hit}const image=new Image();image.onload=requestDraw;image.src=`${config.assetRoot}/${level}/${x}_${y}.png`;cache.set(key,image);while(cache.size>cacheLimit)cache.delete(cache.keys().next().value);return image}
 function labels(){const xTicks=document.querySelector('#x-ticks'),yTicks=document.querySelector('#y-ticks'),dbfs=document.querySelector('#colorbar-ticks');xTicks.innerHTML='';yTicks.innerHTML='';dbfs.innerHTML='';for(let i=0;i<5;i++){const f=i/4,x=document.createElement('span');x.className='tick x-tick';x.style.left=`${f*100}%`;x.textContent=((left+span*f)/config.width*config.durationSeconds).toFixed(2);xTicks.append(x);const y=document.createElement('span');y.className='tick y-tick';y.style.top=`${f*100}%`;y.textContent=(config.frequencyUpperMHz-(config.frequencyUpperMHz-config.frequencyLowerMHz)*f).toFixed(3);yTicks.append(y);const d=document.createElement('span');d.className='tick dbfs-tick';d.style.bottom=`${f*100}%`;d.textContent=(config.dbfsMin+(config.dbfsMax-config.dbfsMin)*f).toFixed(0);dbfs.append(d)}}
-function draw(){clampView();const ratio=window.devicePixelRatio||1,width=Math.max(1,stage.clientWidth),height=Math.max(1,stage.clientHeight);if(canvas.width!==Math.round(width*ratio)||canvas.height!==Math.round(height*ratio)){canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio)}context.setTransform(ratio,0,0,ratio,0,0);context.imageSmoothingEnabled=false;context.fillStyle='#07161c';context.fillRect(0,0,width,height);const level=levelForView(),down=2**(config.maxLevel-level),levelWidth=Math.ceil(config.width/down),levelLeft=left/down,levelSpan=span/down,first=Math.max(0,Math.floor(levelLeft/config.tileSize)),last=Math.min(Math.ceil(levelWidth/config.tileSize)-1,Math.floor((levelLeft+levelSpan)/config.tileSize)),vertical=Math.ceil(config.height/config.tileSize);for(let x=first;x<=last;x++)for(let y=0;y<vertical;y++){const image=tile(level,x,y);if(!image.complete||!image.naturalWidth)continue;const dx=(x*config.tileSize-levelLeft)/levelSpan*width,dw=image.naturalWidth/levelSpan*width,dy=y*config.tileSize/config.height*height,dh=image.naturalHeight/config.height*height;context.drawImage(image,dx,dy,dw,dh)}labels();const nativePerPixel=span/width;document.querySelector('#status').textContent=`${(left/config.width*config.durationSeconds).toFixed(2)}–${((left+span)/config.width*config.durationSeconds).toFixed(2)} s · level ${level}/${config.maxLevel} · ${nativePerPixel<=1?'native STFT cells':nativePerPixel.toFixed(1)+' frames/screen px'}`;}
+function draw(){clampView();const ratio=window.devicePixelRatio||1,width=Math.max(1,stage.clientWidth),height=Math.max(1,stage.clientHeight);if(canvas.width!==Math.round(width*ratio)||canvas.height!==Math.round(height*ratio)){canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio)}context.setTransform(ratio,0,0,ratio,0,0);context.imageSmoothingEnabled=false;context.fillStyle='#07161c';context.fillRect(0,0,width,height);const level=levelForView(),down=2**(config.maxLevel-level),levelWidth=Math.ceil(config.width/down),levelLeft=left/down,levelSpan=span/down,first=Math.max(0,Math.floor(levelLeft/config.tileSize)),last=Math.min(Math.ceil(levelWidth/config.tileSize)-1,Math.floor((levelLeft+levelSpan)/config.tileSize)),vertical=Math.ceil(config.height/config.tileSize);for(let x=first;x<=last;x++)for(let y=0;y<vertical;y++){const image=tile(level,x,y);if(!image.complete||!image.naturalWidth)continue;const dx=(x*config.tileSize-levelLeft)/levelSpan*width,dw=image.naturalWidth/levelSpan*width,dy=y*config.tileSize/config.height*height,dh=image.naturalHeight/config.height*height;context.drawImage(image,dx,dy,dw,dh)}labels();const nativePerPixel=span/width,resolution=nativePerPixel<=1?'native STFT cells':`mean power · ${nativePerPixel.toFixed(1)} frames/screen px`;document.querySelector('#status').textContent=`${(left/config.width*config.durationSeconds).toFixed(2)}–${((left+span)/config.width*config.durationSeconds).toFixed(2)} s · level ${level}/${config.maxLevel} · ${resolution}`;}
 function zoom(factor,anchor=.5){const point=left+span*anchor,newSpan=Math.max(1,Math.min(config.width,span*factor));left=point-newSpan*anchor;span=newSpan;requestDraw()}
 document.querySelector('#full').onclick=()=>{left=0;span=config.width;requestDraw()};
 document.querySelector('#native').onclick=()=>{const center=left+span/2;span=Math.min(config.width,stage.clientWidth);left=center-span/2;requestDraw()};
@@ -914,6 +952,8 @@ def render_recording_viewer(
             directory=temporary_assets,
             scalar_directory=scalar_directory,
             color_lut=_color_lut(colormap),
+            dbfs_min=dbfs_min,
+            dbfs_max=dbfs_max,
             cancel=cancel,
         )
         configuration = {
@@ -930,6 +970,7 @@ def render_recording_viewer(
             "tileSize": _TILE_SIZE,
             "maxLevel": max_level,
             "nativeCells": native_cells,
+            "coarseAggregation": "arithmetic mean of linear power",
             "shareablePng": shareable_png,
         }
         (temporary_assets / "metadata.json").write_text(

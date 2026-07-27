@@ -220,8 +220,9 @@ The PNG is always produced. Its complete-duration heatmap and left-side
 average spectrum use fixed dimensions controlled by `batch_png_time_bins`,
 `batch_png_width_pixels`, and `batch_png_height_pixels`. The tiled HTML omits
 the spectrum strip to devote its full canvas to exact waterfall inspection.
-Coarser HTML levels use dBFS max-hold summaries so narrow events remain visible
-while zoomed out; maximum zoom loads the native, unaggregated STFT cells.
+Coarser HTML levels use the arithmetic mean of linear power for every grouped
+STFT cell, then convert that mean back to dBFS for coloring. Maximum zoom loads
+the native, unaggregated STFT cells.
 `batch_colormap` controls both representations.
 `batch_max_native_cells` prevents an accidental multi-gigabyte render
 (75 million by default). The included LTE captures fit under that bound.

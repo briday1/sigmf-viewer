@@ -487,7 +487,7 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
         tmp_path / "data",
         "multi",
         channels=2,
-        samples=4096,
+        samples=4097,
         channel_names=("Primary antenna", "Reference antenna"),
     )
     recording = open_recording(metadata)
@@ -516,7 +516,7 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
         overlap_percent=50,
         shareable_png=png_output.name,
     )
-    short_frames = (4096 + 127) // 128
+    short_frames = (4097 + 127) // 128
     assert rendered == output.resolve()
     html = output.read_text(encoding="utf-8")
     assert "Full recording" in html
@@ -536,6 +536,10 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
     assert metadata_payload["width"] == short_frames
     assert metadata_payload["height"] == 256
     assert metadata_payload["nativeCells"] == short_frames * 256
+    assert (
+        metadata_payload["coarseAggregation"]
+        == "arithmetic mean of linear power"
+    )
     assert discovered_min % 5.0 == 0.0
     assert discovered_max % 5.0 == 0.0
     assert discovered_max - discovered_min >= 20.0
@@ -576,17 +580,25 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
         / str(metadata_payload["maxLevel"] - 1)
         / "0_0.png"
     )
-    normalized_pair = np.clip(
-        (products.waterfall_dbfs[:2] - discovered_min)
-        / (discovered_max - discovered_min),
-        0.0,
-        1.0,
+    pair_mean_dbfs = 10.0 * np.log10(
+        np.mean(
+            np.power(10.0, products.waterfall_dbfs[:2] / 10.0),
+            axis=0,
+        )
     )
-    max_hold_indexes = np.max(
-        np.minimum(np.floor(normalized_pair * 256.0), 255.0).astype(
-            np.uint8
+    pair_mean_indexes = np.minimum(
+        np.floor(
+            np.clip(
+                (pair_mean_dbfs - discovered_min)
+                / (discovered_max - discovered_min),
+                0.0,
+                1.0,
+            )
+            * 256.0
         ),
-        axis=0,
+        255.0,
+    ).astype(
+        np.uint8
     )
     color_lut = np.asarray(
         matplotlib.colormaps["turbo"](
@@ -596,12 +608,41 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
         dtype=np.uint8,
     )[:, :3]
     with Image.open(reduced_tile) as tile:
-        assert tile.size == (short_frames // 2, 256)
+        assert tile.size == ((short_frames + 1) // 2, 256)
         pixels = tile.load()
         for frequency_bin in (0, 63, 127, 255):
             expected = tuple(
                 int(value)
-                for value in color_lut[max_hold_indexes[frequency_bin]]
+                for value in color_lut[pair_mean_indexes[frequency_bin]]
+            )
+            assert pixels[0, 255 - frequency_bin] == expected
+
+    complete_mean_dbfs = 10.0 * np.log10(
+        np.mean(
+            np.power(10.0, products.waterfall_dbfs / 10.0),
+            axis=0,
+        )
+    )
+    complete_mean_indexes = np.minimum(
+        np.floor(
+            np.clip(
+                (complete_mean_dbfs - discovered_min)
+                / (discovered_max - discovered_min),
+                0.0,
+                1.0,
+            )
+            * 256.0
+        ),
+        255.0,
+    ).astype(np.uint8)
+    coarsest_tile = output.with_name("short.assets") / "0" / "0_0.png"
+    with Image.open(coarsest_tile) as tile:
+        assert tile.size == (1, 256)
+        pixels = tile.load()
+        for frequency_bin in (0, 63, 127, 255):
+            expected = tuple(
+                int(value)
+                for value in color_lut[complete_mean_indexes[frequency_bin]]
             )
             assert pixels[0, 255 - frequency_bin] == expected
 
