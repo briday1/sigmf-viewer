@@ -272,13 +272,13 @@ def _shareable_recording_summary(
     time_bins: int,
     cancel: Callable[[], None] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, float]:
-    """Summarize every STFT frame into a bounded max-hold PNG raster."""
+    """Summarize every STFT frame with exact linear-power time-bin means."""
     row_count = min(time_bins, total_frames)
-    waterfall = np.full(
+    waterfall_power_sum = np.zeros(
         (row_count, effective_fft),
-        -np.inf,
-        dtype=np.float32,
+        dtype=np.float64,
     )
+    waterfall_counts = np.zeros(row_count, dtype=np.uint64)
     spectrum_power_sum = np.zeros(effective_fft, dtype=np.float64)
     histogram = np.zeros(_HISTOGRAM_EDGES.size - 1, dtype=np.uint64)
     histogram_ceiling = np.nextafter(_HISTOGRAM_MAX, _HISTOGRAM_MIN)
@@ -298,10 +298,8 @@ def _shareable_recording_summary(
             clipped,
             bins=_HISTOGRAM_EDGES,
         )[0].astype(np.uint64)
-        spectrum_power_sum += np.sum(
-            np.power(10.0, dbfs / 10.0),
-            axis=0,
-        )
+        power = np.power(10.0, dbfs / 10.0)
+        spectrum_power_sum += np.sum(power, axis=0)
         indexes = np.arange(
             first_index,
             first_index + dbfs.shape[0],
@@ -313,12 +311,19 @@ def _shareable_recording_summary(
         )
         for row in np.unique(rows):
             selected = rows == row
-            waterfall[int(row)] = np.maximum(
-                waterfall[int(row)],
-                np.max(dbfs[selected], axis=0),
+            waterfall_power_sum[int(row)] += np.sum(
+                power[selected],
+                axis=0,
             )
-    if not np.all(np.isfinite(waterfall)):
+            waterfall_counts[int(row)] += int(np.count_nonzero(selected))
+    if np.any(waterfall_counts == 0):
         raise ValueError("shareable PNG raster contains an empty time bin")
+    waterfall = 10.0 * np.log10(
+        np.maximum(
+            waterfall_power_sum / waterfall_counts[:, None],
+            1e-20,
+        )
+    )
     spectrum = 10.0 * np.log10(
         np.maximum(spectrum_power_sum / total_frames, 1e-20)
     )
@@ -464,7 +469,7 @@ def render_recording_png(
         (
             f"{title}\n"
             f"{recording.sample_rate / 1e6:g} MS/s · FFT {effective_fft} · "
-            f"{overlap_percent}% overlap · complete recording max-hold"
+            f"{overlap_percent}% overlap · complete recording mean power"
         ),
         x=0.07,
         ha="left",
@@ -493,7 +498,7 @@ def render_recording_png(
                 "Title": title,
                 "Description": (
                     "Complete recording; every centered STFT frame contributes "
-                    "to a bounded time bin using power-domain max-hold."
+                    "to a bounded time bin using arithmetic mean power."
                 ),
             },
         )

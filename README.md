@@ -28,9 +28,10 @@ identify without taking vertical space away from recording time.
 Progressive rasterization keeps large recordings responsive while scrubbing
 and zooming. The viewer renders only the time/frequency region currently being
 shown, bounded to the available display resolution, and rerasterizes after
-each viewport change. This changes only the displayed heatmap cells: source
-samples, STFT values, axes, annotations, and batch output retain their full
-accuracy.
+each viewport change. Every grouped display cell is the arithmetic mean of
+linear power, converted to dBFS only after averaging. This changes only the
+displayed heatmap cells: source samples, STFT values, axes, annotations, and
+batch output retain their full accuracy.
 
 ![Waterfall with the shared-axis average spectrum and full-recording scrubber](figures/multiple-applications-colors-features.png)
 
@@ -55,14 +56,15 @@ starting the interactive server:
   configured native-cell limit.
 
 Every STFT frame contributes to the PNG. When the recording contains more
-time frames than PNG columns, the renderer uses max-hold within each column so
-short events are retained rather than skipped. The HTML opens at a readable
-whole-recording view and progressively selects finer tiles until every STFT
-frame and FFT bin maps to an exact native pixel. Dragging or a two-finger
-horizontal touchpad gesture scrubs through time; Shift+scroll provides the
-same pan on a conventional wheel. Its **Full PNG** control switches to the
-matching shareable image. Sigvue's results browser lists both representations
-and previews the PNG directly.
+time frames than PNG columns, each displayed cell is the arithmetic mean of
+linear power across its contributing frames, converted back to dBFS only for
+coloring. The HTML uses that same mean-power rule at every grouped tile level.
+It progressively selects finer tiles until every STFT frame and FFT bin maps
+to an exact native pixel. Dragging or a two-finger horizontal touchpad gesture
+scrubs through time; Shift+scroll provides the same pan on a conventional
+wheel. Its **Full PNG** control switches to the matching shareable image.
+Sigvue's results browser lists both representations and previews the PNG
+directly.
 
 The color scale is discovered independently for each recording with the same
 robust percentile and 5 dB rounding rule used by the interactive waterfall.
@@ -220,9 +222,9 @@ The PNG is always produced. Its complete-duration heatmap and left-side
 average spectrum use fixed dimensions controlled by `batch_png_time_bins`,
 `batch_png_width_pixels`, and `batch_png_height_pixels`. The tiled HTML omits
 the spectrum strip to devote its full canvas to exact waterfall inspection.
-Coarser HTML levels use the arithmetic mean of linear power for every grouped
-STFT cell, then convert that mean back to dBFS for coloring. Maximum zoom loads
-the native, unaggregated STFT cells.
+Both PNG time bins and coarser HTML levels use the arithmetic mean of linear
+power for every grouped STFT cell, then convert that mean back to dBFS for
+coloring. Maximum zoom loads the native, unaggregated STFT cells.
 `batch_colormap` controls both representations.
 `batch_max_native_cells` prevents an accidental multi-gigabyte render
 (75 million by default). The included LTE captures fit under that bound.

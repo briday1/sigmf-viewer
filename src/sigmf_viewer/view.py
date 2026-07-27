@@ -162,15 +162,6 @@ def view(data: SigMFWindow, ui: UI) -> None:
                 options=(128, 256, 512, 1024),
             )
         )
-        aggregation = str(
-            ui.select(
-                "render_aggregation",
-                label="Display-cell aggregation",
-                default="mean",
-                options=("max", "mean", "median"),
-            )
-        )
-
     global_metadata = data.recording.metadata["global"]
     recording_title = str(
         global_metadata.get("core:description")
@@ -197,7 +188,6 @@ def view(data: SigMFWindow, ui: UI) -> None:
             progressive_render=progressive_render,
             render_width=render_width,
             render_height=render_height,
-            aggregation=aggregation,
             annotations=(
                 read_sigmf_annotations(data.recording) if show_annotations else ()
             ),

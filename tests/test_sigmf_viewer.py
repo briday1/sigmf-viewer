@@ -9,6 +9,7 @@ import pytest
 from PIL import Image
 from sigvue import AnnotationRequest, BatchRequest
 
+from sigmf_viewer import plots as waterfall_plots
 from sigmf_viewer.analysis import analyze
 from sigmf_viewer.annotations import (
     WaterfallAnnotator,
@@ -17,6 +18,8 @@ from sigmf_viewer.annotations import (
 from sigmf_viewer.batch import (
     RENDER_WATERFALL,
     SigMFWaterfallBatch,
+    _shareable_recording_summary,
+    _stft_geometry,
     render_recording_png,
     render_recording_viewer,
 )
@@ -340,12 +343,25 @@ def test_window_reader_analysis_and_plot_keep_absolute_axes(tmp_path):
 
 def test_progressive_raster_dimensions_and_switches_follow_time_frequency_axes(
     tmp_path,
+    monkeypatch,
 ):
     metadata, _ = write_ci16(tmp_path, "raster", samples=8192)
     recording = open_recording(metadata)
     products = analyze(
         read_window(recording, 1000, 3000),
         WaterfallSettings(fft_size=256, overlap_percent=50, channel=0),
+    )
+    aggregations = []
+    add_viewport_heatmap = waterfall_plots.add_viewport_heatmap
+
+    def capture_aggregation(*args, **kwargs):
+        aggregations.append(kwargs["aggregation"])
+        return add_viewport_heatmap(*args, **kwargs)
+
+    monkeypatch.setattr(
+        waterfall_plots,
+        "add_viewport_heatmap",
+        capture_aggregation,
     )
 
     time_base = [
@@ -419,6 +435,7 @@ def test_progressive_raster_dimensions_and_switches_follow_time_frequency_axes(
     second_width, second_height = displayed_extent(second_zoom)
     assert first_width > second_width
     assert first_height > second_height
+    assert aggregations == ["mean", "mean", "mean"]
 
     direct = waterfall_figure(
         products,
@@ -548,6 +565,38 @@ def test_batch_viewer_preserves_native_stft_cells_and_is_zoomable(tmp_path):
         WaterfallSettings(256, 50, 1),
     )
     assert products.waterfall_dbfs.shape == (short_frames, 256)
+    effective_fft, _, total_frames = _stft_geometry(recording, 256, 50)
+    _, _, png_waterfall, _, _, _ = _shareable_recording_summary(
+        recording,
+        channel=1,
+        effective_fft=effective_fft,
+        total_frames=total_frames,
+        time_bins=16,
+    )
+    png_rows = np.minimum(
+        15,
+        np.arange(short_frames, dtype=np.int64) * 16 // short_frames,
+    )
+    expected_png_waterfall = np.stack(
+        [
+            10.0
+            * np.log10(
+                np.mean(
+                    np.power(
+                        10.0,
+                        products.waterfall_dbfs[png_rows == row] / 10.0,
+                    ),
+                    axis=0,
+                )
+            )
+            for row in range(16)
+        ]
+    )
+    assert np.allclose(
+        png_waterfall,
+        expected_png_waterfall,
+        atol=1e-5,
+    )
     assert (discovered_min, discovered_max) == automatic_dbfs_ranges(products)[0]
     dbfs = products.waterfall_dbfs[0]
     expected_colors = np.asarray(
