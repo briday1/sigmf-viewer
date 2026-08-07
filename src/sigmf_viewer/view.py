@@ -77,6 +77,7 @@ def view(data: SigMFWindow, ui: UI) -> None:
         maximum=20.0,
         step=1.0,
         group="Display",
+        resettable=True,
     )
     spectrum_min, spectrum_max = ui.limits(
         "spectrum_dbfs_limits",
@@ -86,6 +87,7 @@ def view(data: SigMFWindow, ui: UI) -> None:
         maximum=20.0,
         step=1.0,
         group="Display",
+        resettable=True,
     )
     spectrum_style = ui.trace_style(
         "spectrum_style",

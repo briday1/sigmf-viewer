@@ -807,6 +807,9 @@ def test_workspace_is_one_lazy_windowed_pipeline(tmp_path):
     assert all(len(row) == 12 for row in opened.page.playback.overview_heatmap)
     assert opened.page.playback.overview_colormap_control == "colormap"
     assert opened.page.playback.overview_limits_control == "dbfs_limits"
+    controls = {control.name: control for control in opened.page.controls}
+    assert controls["dbfs_limits"].resettable is True
+    assert controls["spectrum_dbfs_limits"].resettable is True
     assert all(control.name != "channel" for control in opened.page.controls)
     stack = [opened.page.layout]
     switchers = []
