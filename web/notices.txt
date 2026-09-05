@@ -1,0 +1,60 @@
+SigMF Viewer browser distribution
+=================================
+
+Bundled recordings are copied byte-for-byte. The original metadata, including
+authors, license fields, and descriptions, accompanies every sample file.
+The build verifies every file against scripts/download_data.py.
+No LTE recording is included.
+
+Operation Coldferry: six synthetic captures by soniccidr.
+Source: https://github.com/soniccidr/Operation-Coldferry/tree/60121977f5f8d1145553251a3b3d0dbe2819aa14/captures
+Repository license: MIT (the capture metadata does not declare a separate
+core:license). Upstream notice from:
+https://github.com/soniccidr/Operation-Coldferry/blob/60121977f5f8d1145553251a3b3d0dbe2819aa14/LICENSE
+
+MIT License
+
+Copyright (c) 2026 soniccidr
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+SigMF logo recording: "The Official SigMF Logo" by Kyle Logue, K6OF.
+Source: https://github.com/sigmf/SigMF/tree/1137fcdd2a369ad779e761fd1e759046c5130a1e/logo
+License declared in recording metadata: Creative Commons Attribution-ShareAlike
+4.0 International: https://creativecommons.org/licenses/by-sa/4.0/
+The recording and its metadata are unmodified. Exported plots are new
+visualizations; when redistributing adapted logo content, follow attribution
+and ShareAlike obligations.
+
+Browser runtime
+---------------
+Pyodide 0.27.7: Mozilla Public License 2.0. Full text: licenses/pyodide.txt
+Corresponding source: https://github.com/pyodide/pyodide/tree/0.27.7
+CPython 3.12.7: PSF license and bundled notices: licenses/python.txt
+Corresponding source: https://github.com/python/cpython/tree/v3.12.7
+NumPy 2.0.2: BSD license and bundled notices: licenses/numpy.txt
+Corresponding source: https://github.com/numpy/numpy/tree/v2.0.2
+Plotly.js 3.1.0: MIT license. Full text: licenses/plotly.txt
+Corresponding source: https://github.com/plotly/plotly.js/tree/v3.1.0
+
+The runtime distributions above are not modified. Python application source is
+included in sigmf_viewer.zip. Package versions and artifact SHA-256 digests are
+recorded in build-info.json. All application/runtime/data requests made while
+viewing recordings are same-origin; this file's external links are references,
+not runtime dependencies.

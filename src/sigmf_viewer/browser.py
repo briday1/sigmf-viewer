@@ -18,6 +18,7 @@ MAX_CHANNELS = 16
 MAX_CELLS = 524288
 MAX_RASTER_ROWS = 192
 MAX_RASTER_COLUMNS = 512
+MAX_SAFE_INTEGER = 2**53 - 1
 
 
 def validate_metadata(metadata: dict, payload_bytes: int) -> None:
@@ -36,6 +37,9 @@ def validate_metadata(metadata: dict, payload_bytes: int) -> None:
         raise ValueError("Channel count must be an integer")
     if not 1 <= channels <= MAX_CHANNELS:
         raise ValueError("Browser supports 1–16 channels")
+    offset = global_metadata.get("core:offset", 0)
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= MAX_SAFE_INTEGER:
+        raise ValueError("Sample offset must be an exact nonnegative JavaScript integer")
     for key in ("core:trailing_bytes",):
         if global_metadata.get(key, 0):
             raise ValueError(f"{key} is not supported in the browser")
@@ -47,16 +51,27 @@ def validate_metadata(metadata: dict, payload_bytes: int) -> None:
             raise ValueError("Captures must be objects")
         if capture.get("core:header_bytes", 0):
             raise ValueError("Capture headers are not supported in the browser")
+        start = capture.get("core:sample_start", offset)
+        if isinstance(start, bool) or not isinstance(start, int) or not 0 <= start <= MAX_SAFE_INTEGER:
+            raise ValueError("Capture sample start must be an exact nonnegative integer")
         if not isfinite(float(capture.get("core:frequency", 0))):
             raise ValueError("Capture frequency must be finite")
     entries = metadata.get("annotations", [])
     if not isinstance(entries, list) or any(not isinstance(a, dict) for a in entries):
         raise ValueError("Annotations must be an array of objects")
+    for entry in entries:
+        for key in ("core:sample_start", "core:sample_count"):
+            if key in entry:
+                value = entry[key]
+                if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= MAX_SAFE_INTEGER:
+                    raise ValueError("Annotation sample bounds must be exact nonnegative integers")
 
 
 def open_browser_recording(path):
     recording = open_recording(path)
     validate_metadata(recording.metadata, recording.data_path.stat().st_size)
+    if recording.sample_offset + recording.sample_count > MAX_SAFE_INTEGER:
+        raise ValueError("Recording sample coordinates exceed exact JavaScript integers")
     return recording
 
 
@@ -130,9 +145,15 @@ def browser_analyze(recording, request):
     x = [float(np.mean(frequency[selection[a:b]])) for a, b in zip(x_edges, x_edges[1:])]
     times = products.time_edges_ms
     y = [(float(times[a]) + float(times[b])) / 2 for a, b in zip(y_edges, y_edges[1:])]
+    step = recording.sample_rate / min(fft_size, count) / 1e6
+    frequency_edges = (
+        float(frequency[selection[0]]) - step / 2 + x_edges * step
+    )
     fmt = SIGMF_DATATYPES[recording.datatype]
     return {
-        "x": x, "y": y, "z": waterfall.tolist(), "spectrum": spectrum.tolist(),
+        "x": x, "y": y, "xEdges": frequency_edges.tolist(),
+        "yEdges": times[y_edges].tolist(),
+        "z": waterfall.tolist(), "spectrum": spectrum.tolist(),
         "start": start, "count": count, "channel": channel,
         "metrics": {
             "inputBytes": recording.data_path.stat().st_size,

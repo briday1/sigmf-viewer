@@ -310,12 +310,13 @@ executable is installed.
 The static browser edition runs Python locally through Pyodide in a Web
 Worker. GitHub Pages serves files only: recording samples and annotations
 are not uploaded to a Python server. The existing Sigvue desktop and
-server-backed interfaces remain separate and unchanged.
+server-backed entry points remain unchanged.
 
-This edition reuses the format reader and NumPy analysis rather than
-reimplementing the FFT in JavaScript. It has a dedicated frontend because
-Sigvue's current web host relies on HTTP API routes, server-side sessions,
-and thread pools. It is not a static export of the complete Sigvue host.
+This edition preserves Sigvue's interface and Python workspace callbacks,
+including the format reader and NumPy analysis. A browser adapter replaces
+HTTP API requests with messages to Python in the worker; it does not start
+a listening web server or reimplement the FFT in JavaScript. Browser file
+handling and execution limits differ from the native application.
 
 The deployed catalog includes the six compact Coldferry recordings and the
 two-channel SigMF logo: approximately 12 MiB of raw samples in total. The
@@ -328,6 +329,30 @@ Annotation edits do not modify hosted examples or overwrite local source
 files. Save exported metadata before closing the page. Arbitrary filesystem
 discovery, shared persistence, and native desktop integration still require
 the normal application.
+
+### Build and preview
+
+From the repository root, install the locked browser dependencies and build:
+
+```bash
+npm ci --ignore-scripts
+npm run build
+npm run preview
+```
+
+Open <http://127.0.0.1:8000/sigmf-viewer/>. The preview command serves static
+files only. The generated `site/` directory contains the runtime, Python
+packages, plotting assets, examples, and attribution; deployed runtime
+requests do not depend on a third-party CDN. The build itself needs internet
+access to obtain pinned, integrity-checked dependencies and examples.
+
+### Deploy
+
+In the repository's **Settings → Pages**, select **GitHub Actions** as the
+build source. The **Browser / GitHub Pages** workflow builds and checks the
+artifact for pull requests, and deploys it on default-branch pushes or manual
+runs targeting the default branch. The resulting project site is
+<https://briday1.github.io/sigmf-viewer/>.
 
 ## Test and package
 

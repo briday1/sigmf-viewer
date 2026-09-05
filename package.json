@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "build": "python scripts/build_pages.py",
-    "test": "node --test tests/browser_scheduler.test.mjs"
+    "preview": "python scripts/serve_pages.py",
+    "test": "node --test tests/browser_scheduler.test.mjs",
+    "test:browser": "node scripts/smoke_pages.mjs"
   },
   "devDependencies": {
     "plotly.js-dist-min": "3.1.0",
