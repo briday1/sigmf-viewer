@@ -305,6 +305,30 @@ Desktop delivery belongs to Sigvue rather than this workspace package.
 pipelines remain independently reusable and no SigMF-specific desktop
 executable is installed.
 
+## GitHub Pages
+
+The static browser edition runs Python locally through Pyodide in a Web
+Worker. GitHub Pages serves files only: recording samples and annotations
+are not uploaded to a Python server. The existing Sigvue desktop and
+server-backed interfaces remain separate and unchanged.
+
+This edition reuses the format reader and NumPy analysis rather than
+reimplementing the FFT in JavaScript. It has a dedicated frontend because
+Sigvue's current web host relies on HTTP API routes, server-side sessions,
+and thread pools. It is not a static export of the complete Sigvue host.
+
+The deployed catalog includes the six compact Coldferry recordings and the
+two-channel SigMF logo: approximately 12 MiB of raw samples in total. The
+roughly 221 MiB LTE collection is deliberately excluded. Example payloads
+are loaded only when selected; the Python runtime is an additional download.
+Source metadata and dataset attribution accompany the examples.
+
+Browser exports are downloads, not durable server-side batch jobs.
+Annotation edits do not modify hosted examples or overwrite local source
+files. Save exported metadata before closing the page. Arbitrary filesystem
+discovery, shared persistence, and native desktop integration still require
+the normal application.
+
 ## Test and package
 
 ```bash
