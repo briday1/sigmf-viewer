@@ -4,16 +4,40 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
-from sigvue.helpers import RemoteFile, download_file
+
+@dataclass(frozen=True)
+class RemoteFile:
+    """Dependency-free manifest entry shared by native and static delivery."""
+
+    url: str
+    filename: str
+    size: int
+    checksum: str
+
+
+def download_file(remote, destination, **options):
+    from sigvue.helpers import RemoteFile as SigvueRemoteFile
+    from sigvue.helpers import download_file as sigvue_download
+
+    return sigvue_download(
+        SigvueRemoteFile(remote.url, remote.filename, remote.size, remote.checksum),
+        destination,
+        **options,
+    )
 
 USER_AGENT = "SigMF-Waterfall-Viewer-Examples/0.1"
 LTE_BASE_URL = "http://nas.destevez.net/~daniel/LTE"
 COLDFERRY_BASE_URL = (
-    "https://raw.githubusercontent.com/soniccidr/Operation-Coldferry/main/captures"
+    "https://raw.githubusercontent.com/soniccidr/Operation-Coldferry/"
+    "60121977f5f8d1145553251a3b3d0dbe2819aa14/captures"
 )
-SIGMF_BASE_URL = "https://raw.githubusercontent.com/sigmf/SigMF/main/logo"
+SIGMF_BASE_URL = (
+    "https://raw.githubusercontent.com/sigmf/SigMF/"
+    "1137fcdd2a369ad779e761fd1e759046c5130a1e/logo"
+)
 
 
 def _remote(

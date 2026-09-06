@@ -1,0 +1,15 @@
+{
+  "name": "sigmf-viewer-pages",
+  "version": "0.3.4",
+  "private": true,
+  "scripts": {
+    "build": "python scripts/build_pages.py",
+    "preview": "python scripts/serve_pages.py",
+    "test": "node --test tests/browser_scheduler.test.mjs",
+    "test:browser": "node scripts/smoke_pages.mjs"
+  },
+  "devDependencies": {
+    "plotly.js-dist-min": "3.1.0",
+    "pyodide": "0.27.7"
+  }
+}

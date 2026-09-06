@@ -8,3 +8,6 @@ build/
 dist/
 data/
 outputs/
+node_modules/
+.pages-cache/
+site/
