@@ -44,6 +44,11 @@ jobs:
           --include data --include src --include pyproject.toml
           --pyodide "${{ runner.temp }}/pyodide"
           --output _site
+      - name: Verify the built site boots in the Pyodide runtime
+        run: >-
+          python scripts/check_static_site.py
+          --site _site
+          --pyodide "${{ runner.temp }}/pyodide"
       - name: Verify the built site serves its app shell
         run: |
           python -m http.server --directory _site 8000 &
