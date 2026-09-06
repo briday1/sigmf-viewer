@@ -41,7 +41,8 @@ jobs:
       - name: Build self-contained static site
         run: >-
           sigvue-static --root . --config browser.toml
-          --include data --pyodide "${{ runner.temp }}/pyodide"
+          --include data --include src --include pyproject.toml
+          --pyodide "${{ runner.temp }}/pyodide"
           --output _site
       - name: Verify the built site serves its app shell
         run: |
