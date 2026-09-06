@@ -150,7 +150,7 @@ def _stale_archive(site: Path, workspace: Path) -> Path:
     return stale
 
 
-def check(site: Path, pyodide: Path, *, node: str = "node") -> None:
+def check(site: Path, pyodide: Path) -> None:
     site = site.resolve()
     pyodide = pyodide.resolve()
     for name in ("manifest.json", "index.html"):
@@ -158,8 +158,8 @@ def check(site: Path, pyodide: Path, *, node: str = "node") -> None:
             raise ValueError(f"{site} is not a built static site (missing {name})")
     if not (pyodide / "pyodide.mjs").is_file():
         raise ValueError(f"{pyodide} is not an extracted Pyodide distribution")
-    if shutil.which(node) is None:
-        raise ValueError(f"Node.js executable not found: {node}")
+    if shutil.which("node") is None:
+        raise ValueError("Node.js executable not found: node")
 
     with tempfile.TemporaryDirectory(prefix="sigmf-viewer-boot-") as directory:
         workspace = Path(directory)
@@ -174,13 +174,23 @@ def check(site: Path, pyodide: Path, *, node: str = "node") -> None:
             }
             if stale is not None:
                 environment["STALE_ARCHIVE"] = str(stale)
-            result = subprocess.run(
-                [node, str(harness)],
-                env=environment,
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
+            else:
+                environment.pop("STALE_ARCHIVE", None)
+            try:
+                result = subprocess.run(
+                    ["node", str(harness)],
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+            except subprocess.TimeoutExpired as error:
+                sys.stderr.write(
+                    f"{(error.stderr or '')[-4000:]}\n"
+                    if isinstance(error.stderr, str)
+                    else ""
+                )
+                raise SystemExit(f"Boot check timed out ({label} browser state)")
             for line in result.stdout.splitlines():
                 if not line.startswith(("Loading ", "Loaded ")):
                     print(f"  {line}")
