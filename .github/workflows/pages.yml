@@ -42,6 +42,7 @@ jobs:
         run: >-
           sigvue-static --root . --config browser.toml
           --include data --pyodide "${{ runner.temp }}/pyodide"
+          --python-packages .:matplotlib:numpy:Pillow:plotly
           --output _site
       - name: Verify the built site serves its app shell
         run: |
