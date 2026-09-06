@@ -1,0 +1,71 @@
+name: Static demo on GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install current Sigvue and viewer
+        run: |
+          python -m pip install "sigvue @ git+https://github.com/briday1/sigvue.git@main"
+          python -m pip install -e ".[test]"
+      - name: Test
+        run: python -m pytest -q
+      - name: Download example recordings
+        run: python scripts/download_data.py --datasets coldferry sigmf-logo
+      - name: Download verified Pyodide runtime
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/pyodide/pyodide/releases/download/314.0.6/pyodide-314.0.6.tar.bz2 \
+            --output pyodide.tar.bz2
+          echo "fd25b21567f83f83b0b8bb1780a5458c6d4dd10bb07a22004424194022037f00  pyodide.tar.bz2" | sha256sum --check
+          tar -xjf pyodide.tar.bz2
+      - name: Build self-contained static site
+        run: >-
+          sigvue-static --root . --config browser.toml
+          --include data --pyodide "${{ runner.temp }}/pyodide"
+          --output _site
+      - name: Verify the built site serves its app shell
+        run: |
+          python -m http.server --directory _site 8000 &
+          server_pid=$!
+          sleep 1
+          curl --fail http://127.0.0.1:8000/index.html --output /dev/null
+          curl --fail http://127.0.0.1:8000/manifest.json --output /dev/null
+          kill "$server_pid"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - uses: actions/deploy-pages@v4
+        id: deployment

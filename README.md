@@ -305,6 +305,38 @@ Desktop delivery belongs to Sigvue rather than this workspace package.
 pipelines remain independently reusable and no SigMF-specific desktop
 executable is installed.
 
+## Static hosting: GitHub Pages
+
+The **Static demo on GitHub Pages** workflow
+(`.github/workflows/pages.yml`) builds a self-contained Sigvue static site
+that runs this workspace's real Python analysis in a Pyodide Web Worker,
+using the compact Operation Coldferry and SigMF logo recordings so the build
+stays fast and reliable. It tests the pull request build and deploys `main`.
+
+In repository **Settings → Pages → Build and deployment**, select
+**GitHub Actions**. Once merged and deployed, the site is published at
+<https://briday1.github.io/sigmf-viewer/>. No server, API, or credentials are
+required by the published application; see Sigvue's
+[static hosting notes](https://github.com/briday1/sigvue#static-hosting-github-pages-and-gitlab-pages)
+for what runs client-side and its current browser requirements.
+
+To build the same site locally:
+
+```bash
+python -m pip install -e ".[test]"
+python scripts/download_data.py --datasets coldferry sigmf-logo
+curl --fail --location --retry 3 \
+  https://github.com/pyodide/pyodide/releases/download/314.0.6/pyodide-314.0.6.tar.bz2 \
+  --output /tmp/pyodide.tar.bz2
+tar -xjf /tmp/pyodide.tar.bz2 -C /tmp
+sigvue-static --root . --config browser.toml --include data \
+  --pyodide /tmp/pyodide --output _site
+python -m http.server --directory _site 8000
+```
+
+Open <http://localhost:8000>. `_site` is a disposable build output and is
+excluded from Git.
+
 ## Test and package
 
 ```bash
